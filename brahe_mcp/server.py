@@ -4,3 +4,4 @@ mcp = FastMCP("brahe")
 
 # Import submodules to register their tools with the mcp instance
 import brahe_mcp.constants  # noqa: F401, E402
+import brahe_mcp.epochs  # noqa: F401, E402
