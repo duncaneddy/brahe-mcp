@@ -9,84 +9,95 @@ VALID_ANGLE_FORMATS = {
     "radians": brahe.AngleFormat.RADIANS,
 }
 
+PARAM_UNITS = {
+    "a": "m",
+    "e": "dimensionless",
+    "n": "deg/s or rad/s (see angle_format)",
+    "period": "s",
+    "state_eci": "m, m/s (comma-separated: x,y,z,vx,vy,vz)",
+    "gm": "m^3/s^2",
+    "r_body": "m",
+    "angle_format": "degrees or radians",
+}
+
 ORBITAL_PROPERTIES = {
     "orbital_period": {
-        "desc": "Orbital period (s)",
+        "desc": "Compute orbital period from semi-major axis. Input: a (m). Output: period (s).",
         "required": ["a"],
         "optional": ["gm"],
-        "unit": "s",
+        "output_unit": "s",
     },
     "orbital_period_from_state": {
-        "desc": "Orbital period from ECI state vector (s)",
+        "desc": "Compute orbital period from ECI state vector. Input: state_eci (m, m/s). Output: period (s).",
         "required": ["state_eci"],
         "optional": ["gm"],
-        "unit": "s",
+        "output_unit": "s",
     },
     "mean_motion": {
-        "desc": "Mean motion (deg/s or rad/s)",
+        "desc": "Compute mean motion from semi-major axis. Input: a (m). Output: mean motion (deg/s or rad/s per angle_format).",
         "required": ["a"],
         "optional": ["gm", "angle_format"],
-        "unit": "deg/s",
+        "output_unit": "deg/s",
     },
     "semimajor_axis": {
-        "desc": "Semi-major axis from mean motion (m)",
+        "desc": "Compute semi-major axis from mean motion. Input: n (deg/s or rad/s per angle_format). Output: semi-major axis (m).",
         "required": ["n"],
         "optional": ["gm", "angle_format"],
-        "unit": "m",
+        "output_unit": "m",
     },
     "semimajor_axis_from_period": {
-        "desc": "Semi-major axis from orbital period (m)",
+        "desc": "Compute semi-major axis from orbital period. Input: period (s). Output: semi-major axis (m).",
         "required": ["period"],
         "optional": ["gm"],
-        "unit": "m",
+        "output_unit": "m",
     },
     "periapsis_velocity": {
-        "desc": "Velocity at periapsis (m/s)",
+        "desc": "Compute velocity at periapsis. Input: a (m), e (dimensionless). Output: velocity (m/s).",
         "required": ["a", "e"],
         "optional": ["gm"],
-        "unit": "m/s",
+        "output_unit": "m/s",
     },
     "apoapsis_velocity": {
-        "desc": "Velocity at apoapsis (m/s)",
+        "desc": "Compute velocity at apoapsis. Input: a (m), e (dimensionless). Output: velocity (m/s).",
         "required": ["a", "e"],
         "optional": ["gm"],
-        "unit": "m/s",
+        "output_unit": "m/s",
     },
     "periapsis_distance": {
-        "desc": "Distance from body center at periapsis (m)",
+        "desc": "Compute distance from body center at periapsis. Input: a (m), e (dimensionless). Output: distance (m).",
         "required": ["a", "e"],
         "optional": [],
-        "unit": "m",
+        "output_unit": "m",
     },
     "apoapsis_distance": {
-        "desc": "Distance from body center at apoapsis (m)",
+        "desc": "Compute distance from body center at apoapsis. Input: a (m), e (dimensionless). Output: distance (m).",
         "required": ["a", "e"],
         "optional": [],
-        "unit": "m",
+        "output_unit": "m",
     },
     "periapsis_altitude": {
-        "desc": "Altitude above surface at periapsis (m)",
+        "desc": "Compute altitude above surface at periapsis. Input: a (m), e (dimensionless). Output: altitude (m).",
         "required": ["a", "e"],
         "optional": ["r_body"],
-        "unit": "m",
+        "output_unit": "m",
     },
     "apoapsis_altitude": {
-        "desc": "Altitude above surface at apoapsis (m)",
+        "desc": "Compute altitude above surface at apoapsis. Input: a (m), e (dimensionless). Output: altitude (m).",
         "required": ["a", "e"],
         "optional": ["r_body"],
-        "unit": "m",
+        "output_unit": "m",
     },
     "sun_synchronous_inclination": {
-        "desc": "Inclination for sun-synchronous orbit (deg or rad)",
+        "desc": "Compute inclination for sun-synchronous orbit. Input: a (m), e (dimensionless). Output: inclination (deg or rad per angle_format).",
         "required": ["a", "e"],
         "optional": ["angle_format"],
-        "unit": "deg",
+        "output_unit": "deg",
     },
     "geo_sma": {
-        "desc": "Geostationary orbit semi-major axis (m)",
+        "desc": "Compute geostationary orbit semi-major axis. No inputs required. Output: semi-major axis (m).",
         "required": [],
         "optional": [],
-        "unit": "m",
+        "output_unit": "m",
     },
 }
 
@@ -218,11 +229,18 @@ def list_orbital_computations() -> dict:
                 "description": info["desc"],
                 "required_params": info["required"],
                 "optional_params": info["optional"],
+                "input_units": {p: PARAM_UNITS[p] for p in info["required"] + info["optional"] if p in PARAM_UNITS},
+                "output_unit": info["output_unit"],
             }
             for name, info in ORBITAL_PROPERTIES.items()
         ],
         "anomaly_conversions": [
-            {"name": name, "description": info["desc"]}
+            {
+                "name": name,
+                "description": info["desc"],
+                "input_units": {"anomaly": "deg or rad (see angle_format)", "e": "dimensionless"},
+                "output_unit": "deg or rad (matches angle_format)",
+            }
             for name, info in ANOMALY_CONVERSIONS.items()
         ],
     }
@@ -317,16 +335,20 @@ def compute_orbital_property(
     if "angle_format" in prop["optional"]:
         inputs["angle_format"] = fmt_lower
 
-    # Determine unit
-    unit = prop["unit"]
-    if unit in ("deg/s", "deg") and fmt_lower == "radians":
-        unit = unit.replace("deg", "rad")
+    # Determine output unit
+    output_unit = prop["output_unit"]
+    if output_unit in ("deg/s", "deg") and fmt_lower == "radians":
+        output_unit = output_unit.replace("deg", "rad")
+
+    # Build input units for the params actually used
+    input_units = {p: PARAM_UNITS[p] for p in inputs if p in PARAM_UNITS}
 
     logger.debug("Computed {}: {}", key, result)
     return {
         "computation": key,
-        "result": {"value": result, "unit": unit},
+        "result": {"value": result, "output_unit": output_unit},
         "inputs": inputs,
+        "input_units": input_units,
     }
 
 

@@ -25,6 +25,12 @@ def test_list_orbital_computations():
     assert "description" in prop
     assert "required_params" in prop
     assert "optional_params" in prop
+    assert "input_units" in prop
+    assert "output_unit" in prop
+    # Check anomaly conversion structure
+    conv = result["anomaly_conversions"][0]
+    assert "input_units" in conv
+    assert "output_unit" in conv
 
 
 # --- compute_orbital_property ---
@@ -34,7 +40,9 @@ def test_orbital_period_earth():
     result = compute_orbital_property("orbital_period", a=7000e3)
     assert result["computation"] == "orbital_period"
     assert abs(result["result"]["value"] - 5828.5) < 1.0
-    assert result["result"]["unit"] == "s"
+    assert result["result"]["output_unit"] == "s"
+    assert "input_units" in result
+    assert result["input_units"]["a"] == "m"
 
 
 def test_orbital_period_general():
@@ -53,13 +61,13 @@ def test_orbital_period_from_state():
 def test_mean_motion_degrees():
     result = compute_orbital_property("mean_motion", a=7000e3)
     assert abs(result["result"]["value"] - 0.0618) < 0.001
-    assert result["result"]["unit"] == "deg/s"
+    assert result["result"]["output_unit"] == "deg/s"
 
 
 def test_mean_motion_radians():
     result = compute_orbital_property("mean_motion", a=7000e3, angle_format="radians")
     assert abs(result["result"]["value"] - 0.00108) < 0.0001
-    assert result["result"]["unit"] == "rad/s"
+    assert result["result"]["output_unit"] == "rad/s"
 
 
 def test_semimajor_axis_from_mean_motion():
@@ -77,7 +85,7 @@ def test_semimajor_axis_from_period():
 def test_periapsis_velocity():
     result = compute_orbital_property("periapsis_velocity", a=7000e3, e=0.001)
     assert result["result"]["value"] > 7000  # m/s, reasonable LEO velocity
-    assert result["result"]["unit"] == "m/s"
+    assert result["result"]["output_unit"] == "m/s"
 
 
 def test_apoapsis_velocity():

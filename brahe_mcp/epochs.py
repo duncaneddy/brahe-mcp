@@ -2,6 +2,7 @@ import brahe
 from loguru import logger
 
 from brahe_mcp.server import mcp
+from brahe_mcp.utils import error_response, parse_epoch
 
 VALID_TIME_SYSTEMS = {
     "UTC": brahe.TimeSystem.UTC,
@@ -24,26 +25,18 @@ VALID_OUTPUT_FORMATS = {"iso", "iso_precise", "string", "mjd", "jd", "gps_second
 
 
 def _error_response(message: str) -> dict:
-    return {
-        "error": message,
-        "valid_input_formats": sorted(VALID_INPUT_FORMATS),
-        "valid_output_formats": sorted(VALID_OUTPUT_FORMATS),
-        "valid_time_systems": sorted(VALID_TIME_SYSTEMS.keys()),
-    }
+    return error_response(
+        message,
+        valid_input_formats=sorted(VALID_INPUT_FORMATS),
+        valid_output_formats=sorted(VALID_OUTPUT_FORMATS),
+        valid_time_systems=sorted(VALID_TIME_SYSTEMS.keys()),
+    )
 
 
 def _parse_epoch(value: str, input_format: str, time_system: brahe.TimeSystem) -> brahe.Epoch:
     """Parse a string value into a brahe.Epoch based on the input format."""
     if input_format == "iso":
-        # Try parsing the string as-is first (handles "Z" suffix and "... UTC"/"... GPS" etc.)
-        stripped = value.strip()
-        try:
-            return brahe.Epoch(stripped)
-        except ValueError:
-            pass
-        # If no time system indicator, normalize and assume UTC
-        normalized = stripped.replace("T", " ")
-        return brahe.Epoch(f"{normalized} UTC")
+        return parse_epoch(value)
     elif input_format == "mjd":
         return brahe.Epoch.from_mjd(float(value), time_system)
     elif input_format == "jd":

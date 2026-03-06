@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-DB_DIR = Path.home() / ".brahe-mcp"
+DB_DIR = Path.home() / ".cache" / "brahe-mcp"
 DB_PATH = DB_DIR / "brahe_mcp.db"
 
 
