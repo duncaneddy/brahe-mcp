@@ -1,0 +1,16 @@
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+*.log
+.pytest_cache/
+uv.lock
