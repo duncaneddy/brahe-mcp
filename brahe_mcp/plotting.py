@@ -263,20 +263,14 @@ def plot_gp_history_elements(
         )
 
     # Extract epochs and values
-    from datetime import datetime
+    from brahe_mcp.utils import parse_epoch_datetime
 
     epochs = []
     for rec in gp_records:
         epoch_str = rec.get("epoch", "")
-        # Parse epoch string to datetime for plotting
-        cleaned = epoch_str.strip()
-        for suffix in (" UTC", "Z"):
-            if cleaned.endswith(suffix):
-                cleaned = cleaned[: -len(suffix)]
-        cleaned = cleaned.replace("T", " ", 1)
         try:
-            epochs.append(datetime.fromisoformat(cleaned))
-        except ValueError:
+            epochs.append(parse_epoch_datetime(epoch_str))
+        except (ValueError, TypeError):
             epochs.append(None)
 
     values = {}

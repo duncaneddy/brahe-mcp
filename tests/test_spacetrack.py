@@ -185,6 +185,40 @@ def test_get_gp_history_with_epoch_range(monkeypatch):
     assert "error" not in result
 
 
+def test_get_gp_history_with_decimation(monkeypatch):
+    # 10 daily records
+    records = [
+        _make_gp_record(norad_cat_id=25544, epoch=f"2024-01-{d:02d}T00:00:00")
+        for d in range(1, 11)
+    ]
+    mock = _mock_client(query_gp=records)
+    monkeypatch.setattr(mod, "_get_client", lambda: mock)
+
+    result = get_spacetrack_gp_history(norad_cat_id=25544, decimation="3d")
+    assert "error" not in result
+    assert result["decimation"] == "3d"
+    assert result["count"] < 10
+    # First and last preserved
+    assert result["records"][0]["epoch"] == "2024-01-01T00:00:00"
+    assert result["records"][-1]["epoch"] == "2024-01-10T00:00:00"
+
+
+def test_get_gp_history_decimation_empty(monkeypatch):
+    mock = _mock_client(query_gp=[])
+    monkeypatch.setattr(mod, "_get_client", lambda: mock)
+
+    result = get_spacetrack_gp_history(norad_cat_id=25544, decimation="1d")
+    assert result["count"] == 0
+    assert result["records"] == []
+
+
+def test_get_gp_history_invalid_decimation():
+    # Should return error without making API call
+    result = get_spacetrack_gp_history(norad_cat_id=25544, decimation="invalid")
+    assert "error" in result
+    assert "Invalid decimation interval" in result["error"]
+
+
 # --- get_spacetrack_satcat ---
 
 

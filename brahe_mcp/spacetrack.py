@@ -13,7 +13,12 @@ from brahe.spacetrack import operators
 from loguru import logger
 
 from brahe_mcp.server import mcp
-from brahe_mcp.utils import error_response, serialize_gp_record
+from brahe_mcp.utils import (
+    decimate_records,
+    error_response,
+    parse_decimation_interval,
+    serialize_gp_record,
+)
 
 # ---------------------------------------------------------------------------
 # Lazy client initialization (requires env vars)
@@ -250,6 +255,7 @@ def get_spacetrack_gp_history(
     name: str | None = None,
     epoch_range: str | None = None,
     limit: int | None = None,
+    decimation: str | None = None,
 ) -> dict:
     """Query historical GP records from SpaceTrack.
 
@@ -258,8 +264,11 @@ def get_spacetrack_gp_history(
     Useful for tracking orbital evolution over time.
 
     At least one filter parameter must be provided. An epoch_range is
-    strongly recommended to avoid very large result sets. Requires
-    SPACETRACK_USER and SPACETRACK_PASS environment variables.
+    strongly recommended to avoid very large result sets. For queries
+    spanning more than a couple of days, use the decimation parameter to
+    thin results (e.g. '1d' for ~1 record per day).
+
+    Requires SPACETRACK_USER and SPACETRACK_PASS environment variables.
 
     Args:
         norad_cat_id: NORAD catalog number (e.g. 25544 for ISS).
@@ -267,11 +276,22 @@ def get_spacetrack_gp_history(
         epoch_range: ISO datetime range string "start--end" to filter by EPOCH
             (e.g. "2024-01-01--2024-01-31").
         limit: Maximum number of records to return.
+        decimation: Thin results to ~1 record per interval. Accepts a number
+            followed by a unit: s (seconds), m (minutes), h (hours), d (days),
+            w (weeks). Examples: "1d", "12h", "1w".
     """
     if norad_cat_id is None and name is None and epoch_range is None:
         return error_response(
             "At least one filter required: norad_cat_id, name, or epoch_range",
         )
+
+    # Validate decimation before making the API call (fail fast)
+    decimation_interval = None
+    if decimation is not None:
+        try:
+            decimation_interval = parse_decimation_interval(decimation)
+        except ValueError as exc:
+            return error_response(str(exc))
 
     try:
         query = SpaceTrackQuery(RequestClass.GP_HISTORY)
@@ -296,11 +316,19 @@ def get_spacetrack_gp_history(
         logger.error("SpaceTrack GP History error: {}", exc)
         return error_response(f"SpaceTrack GP History query failed: {exc}")
 
-    return {
+    result = {
         "request_class": "gp_history",
         "count": len(records),
         "records": records,
     }
+
+    if decimation_interval is not None:
+        records = decimate_records(records, decimation_interval)
+        result["records"] = records
+        result["count"] = len(records)
+        result["decimation"] = decimation
+
+    return result
 
 
 # ---------------------------------------------------------------------------
