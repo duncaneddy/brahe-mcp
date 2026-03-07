@@ -89,6 +89,41 @@ def list_time_systems() -> dict:
 
 
 @mcp.tool()
+def current_time(
+    output_format: str = "iso",
+    output_time_system: str = "UTC",
+) -> dict:
+    """Return the current time as an epoch.
+
+    Args:
+        output_format: Output format - one of: iso, iso_precise, string, mjd, jd, gps_seconds, gps_nanoseconds, gps_date.
+        output_time_system: Time system for output. One of: UTC, GPS, TAI, TT, UT1.
+    """
+    if output_format not in VALID_OUTPUT_FORMATS:
+        logger.warning("Invalid output_format: {}", output_format)
+        return _error_response(f"Invalid output_format: {output_format!r}")
+
+    out_ts_upper = output_time_system.upper()
+    if out_ts_upper not in VALID_TIME_SYSTEMS:
+        logger.warning("Invalid output_time_system: {}", output_time_system)
+        return _error_response(f"Invalid output_time_system: {output_time_system!r}")
+    out_ts = VALID_TIME_SYSTEMS[out_ts_upper]
+
+    epoch = brahe.Epoch.now()
+
+    try:
+        result_value = _format_output(epoch, output_format, out_ts)
+    except Exception as e:
+        logger.error("Failed to format current time: {}", e)
+        return _error_response(f"Error formatting output as {output_format}: {e}")
+
+    logger.debug("Current time: {} {}", result_value, output_format)
+    return {
+        "output": {"value": result_value, "format": output_format, "time_system": out_ts_upper},
+    }
+
+
+@mcp.tool()
 def convert_epoch(
     value: str,
     input_format: str = "iso",

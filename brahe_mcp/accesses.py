@@ -12,9 +12,6 @@ from brahe_mcp.propagation import (
     _build_force_config,
 )
 
-# Ensure EOP data is loaded for frame transforms
-brahe.initialize_eop()
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

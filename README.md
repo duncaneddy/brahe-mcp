@@ -1,17 +1,34 @@
 # brahe-mcp
 
-MCP server wrapping the [Brahe](https://github.com/duncaneddy/brahe) astrodynamics library.
+[![Tests](https://github.com/duncaneddy/brahe-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/duncaneddy/brahe-mcp/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/brahe-mcp)](https://pypi.org/project/brahe-mcp/)
+
+This project provides a Model Context Protocol (MCP) server that exposes the astrodynamics capabilities of the [Brahe](https://github.com/duncaneddy/brahe) library enabling language models to get smarter about astrodynamics and space situational awareness.
+
+![demo](demo.gif)
 
 ## Installation
 
 ```bash
-uv add brahe-mcp
+uv tool install brahe-mcp
 ```
 
-or 
+or
 
 ```bash
 pip install brahe-mcp
+```
+
+Then configure your MCP client to use the installed tool:
+
+```json
+{
+  "mcpServers": {
+    "brahe": {
+      "command": "brahe-mcp"
+    }
+  }
+}
 ```
 
 ## Local Setup
@@ -50,8 +67,7 @@ The SpaceTrack tools require a [Space-Track.org](https://www.space-track.org) ac
 {
   "mcpServers": {
     "brahe": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/brahe-mcp", "brahe-mcp"],
+      "command": "brahe-mcp",
       "env": {
         "SPACETRACK_USER": "your@email.com",
         "SPACETRACK_PASS": "your-password"

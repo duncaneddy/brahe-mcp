@@ -7,9 +7,6 @@ from loguru import logger
 from brahe_mcp.server import mcp
 from brahe_mcp.utils import error_response, parse_epoch, resolve_angle_format
 
-# Initialize EOP data for epoch-dependent frame transforms
-brahe.initialize_eop()
-
 VALID_STATION_TYPES = {
     "geodetic": brahe.EllipsoidalConversionType.GEODETIC,
     "geocentric": brahe.EllipsoidalConversionType.GEOCENTRIC,

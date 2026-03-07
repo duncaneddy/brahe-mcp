@@ -7,9 +7,6 @@ from loguru import logger
 from brahe_mcp.server import mcp
 from brahe_mcp.utils import error_response, parse_epoch, resolve_angle_format
 
-# Ensure EOP data is loaded for frame transforms
-brahe.initialize_eop()
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

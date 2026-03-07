@@ -7,13 +7,31 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Duncan Eddy", email = "duncan.eddy@gmail.com" }]
 keywords = ["space", "astrodynamics", "satellite", "mcp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 
 dependencies = [
     "brahe>=1.1.4",
     "mcp>=1.9.0",
     "pydantic>=2.0",
     "loguru>=0.7",
+    "matplotlib>=3.7",
+    "scienceplots>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/duncaneddy/brahe-mcp"
+Repository = "https://github.com/duncaneddy/brahe-mcp"
+Issues = "https://github.com/duncaneddy/brahe-mcp/issues"
 
 [project.scripts]
 brahe-mcp = "brahe_mcp.__main__:main"
