@@ -1,7 +1,13 @@
 # brahe-mcp
 
-[![Tests](https://github.com/duncaneddy/brahe-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/duncaneddy/brahe-mcp/actions/workflows/test.yml)
-[![PyPI](https://img.shields.io/pypi/v/brahe-mcp)](https://pypi.org/project/brahe-mcp/)
+<p align="center">
+  <a href="https://github.com/duncaneddy/brahe-mcp/actions/workflows/test.yml/badge.svg">
+    <img src="https://github.com/duncaneddy/brahe-mcp/actions/workflows/test.yml/badge.svg" alt="Tests">
+  </a>
+  <a href="https://pypi.org/project/brahe-mcp/">
+    <img src="https://img.shields.io/pypi/v/brahe-mcp" alt="PyPI">
+  </a>
+</p>
 
 This project provides a Model Context Protocol (MCP) server that exposes the astrodynamics capabilities of the [Brahe](https://github.com/duncaneddy/brahe) library enabling language models to get smarter about astrodynamics and space situational awareness.
 
