@@ -159,6 +159,14 @@ def list_plotting_options() -> dict:
                 "elements": list(_ELEMENT_LABELS.keys()),
                 "default_elements": _CLASSICAL_ELEMENTS,
             },
+            "plot_altitude": {
+                "description": "Plot satellite altitude (WGS84) versus time",
+                "inputs": "satellite dict (same format as compute_access), start/end epochs",
+            },
+            "plot_altitude_from_gp": {
+                "description": "Plot satellite altitude versus time from a GP record",
+                "inputs": "gp_record dict, start/end epochs",
+            },
             "plot_ground_track": {
                 "description": "Plot satellite ground track on a world map",
                 "inputs": "satellite dict (same format as compute_access), start/end epochs",
@@ -323,7 +331,170 @@ def plot_gp_history_elements(
 
 
 # ---------------------------------------------------------------------------
-# Tool 3: plot_ground_track
+# Tool 3: plot_altitude
+# ---------------------------------------------------------------------------
+
+
+def _compute_altitudes(propagator, start, end):
+    """Propagate and compute geodetic altitude at each trajectory epoch.
+
+    Args:
+        propagator: A brahe propagator instance.
+        start: Start epoch.
+        end: End epoch.
+
+    Returns:
+        Tuple of (epochs_dt, altitudes_km) lists.
+    """
+    from datetime import datetime
+
+    traj = _propagate_trajectory(propagator, start, end)
+
+    epochs_dt = []
+    altitudes_km = []
+    for i in range(traj.length):
+        epc = traj.epoch_at_idx(i)
+        state_ecef = traj.state_ecef(epc)
+        geod = brahe.position_ecef_to_geodetic(
+            state_ecef[:3], brahe.AngleFormat.DEGREES
+        )
+        alt_km = geod[2] / 1000.0
+
+        # Convert brahe Epoch to datetime for plotting
+        epoch_str = str(epc)
+        cleaned = epoch_str.strip()
+        for suffix in (" UTC", "Z"):
+            if cleaned.endswith(suffix):
+                cleaned = cleaned[: -len(suffix)]
+        cleaned = cleaned.replace("T", " ", 1)
+        try:
+            epochs_dt.append(datetime.fromisoformat(cleaned))
+        except ValueError:
+            continue
+        altitudes_km.append(alt_km)
+
+    return epochs_dt, altitudes_km
+
+
+@mcp.tool()
+def plot_altitude(
+    satellite: dict,
+    start_epoch: str,
+    end_epoch: str,
+    step_seconds: float = 60.0,
+    title: str | None = None,
+) -> list | dict:
+    """Plot satellite altitude (above WGS84 ellipsoid) versus time.
+
+    Propagates the orbit and converts each ECEF position to geodetic
+    altitude. Useful for visualizing orbital decay, altitude variations
+    due to eccentricity, and maneuver effects.
+
+    Args:
+        satellite: Satellite spec dict (same format as compute_access).
+            Must include "source" key ("tle", "gp_record", or "state").
+        start_epoch: Start epoch (ISO string).
+        end_epoch: End epoch (ISO string).
+        step_seconds: Propagation step size in seconds (default 60).
+        title: Optional plot title.
+    """
+    from brahe_mcp.accesses import _build_propagator
+
+    try:
+        propagator = _build_propagator(satellite)
+    except (ValueError, Exception) as e:
+        return error_response(f"Failed to create propagator: {e}")
+
+    try:
+        start = parse_epoch(start_epoch)
+        end = parse_epoch(end_epoch)
+    except ValueError as e:
+        return error_response(f"Invalid epoch: {e}")
+
+    if float(end - start) <= 0:
+        return error_response("end_epoch must be after start_epoch.")
+
+    try:
+        epochs_dt, altitudes_km = _compute_altitudes(propagator, start, end)
+    except Exception as e:
+        return error_response(f"Altitude computation failed: {e}")
+
+    if not epochs_dt:
+        return error_response("No altitude data computed.")
+
+    with plt.style.context(_STYLE):
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.plot(epochs_dt, altitudes_km, linewidth=0.8)
+        ax.set_ylabel("Altitude [km]")
+        ax.set_xlabel("Epoch")
+        ax.grid(True, alpha=0.3)
+        fig.autofmt_xdate()
+
+        if title:
+            ax.set_title(title)
+        else:
+            ax.set_title("Altitude vs Time")
+
+        fig.tight_layout()
+
+    alt_min = min(altitudes_km)
+    alt_max = max(altitudes_km)
+    duration_h = float(end - start) / 3600.0
+    summary = (
+        f"Altitude plotted for {duration_h:.1f} hours ({start} to {end}). "
+        f"Range: {alt_min:.1f} - {alt_max:.1f} km."
+    )
+    logger.debug(summary)
+
+    return [
+        TextContent(type="text", text=summary),
+        _figure_to_image(fig),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Tool 4: plot_altitude_from_gp
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def plot_altitude_from_gp(
+    gp_record: dict,
+    start_epoch: str,
+    end_epoch: str,
+    propagator_type: str = "sgp4",
+    step_seconds: float = 60.0,
+    title: str | None = None,
+) -> list | dict:
+    """Plot satellite altitude versus time from a GP record.
+
+    Convenience wrapper that creates a satellite spec from a GP record dict
+    and delegates to plot_altitude().
+
+    Args:
+        gp_record: GP record dict from celestrak/spacetrack tools.
+        start_epoch: Start epoch (ISO string).
+        end_epoch: End epoch (ISO string).
+        propagator_type: "sgp4" (default) or "keplerian".
+        step_seconds: Propagation step size in seconds (default 60).
+        title: Optional plot title.
+    """
+    satellite = {
+        "source": "gp_record",
+        "gp_record": gp_record,
+        "propagator_type": propagator_type,
+    }
+    return plot_altitude(
+        satellite=satellite,
+        start_epoch=start_epoch,
+        end_epoch=end_epoch,
+        step_seconds=step_seconds,
+        title=title,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool 5: plot_ground_track
 # ---------------------------------------------------------------------------
 
 

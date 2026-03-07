@@ -6,6 +6,8 @@ from mcp.types import ImageContent, TextContent
 from brahe_mcp.plotting import (
     list_plotting_options,
     plot_gp_history_elements,
+    plot_altitude,
+    plot_altitude_from_gp,
     plot_ground_track,
     plot_ground_track_from_gp,
     plot_orbit_elements,
@@ -166,6 +168,85 @@ class TestPlotGPHistoryElements:
         records = [FAKE_GP_RECORD, FAKE_GP_RECORD_2]
         result = plot_gp_history_elements(
             gp_records=records, elements=["bstar", "period", "apoapsis"]
+        )
+        _assert_plot_result(result)
+
+
+# ---------------------------------------------------------------------------
+# Altitude
+# ---------------------------------------------------------------------------
+
+
+class TestPlotAltitude:
+    def test_from_tle(self):
+        result = plot_altitude(
+            satellite={"source": "tle", "tle_line1": TLE_LINE1, "tle_line2": TLE_LINE2},
+            start_epoch=TEST_EPOCH_START,
+            end_epoch=TEST_EPOCH_END,
+        )
+        _assert_plot_result(result)
+        # Summary should contain altitude range
+        assert "km" in result[0].text
+
+    def test_with_title(self):
+        result = plot_altitude(
+            satellite={"source": "tle", "tle_line1": TLE_LINE1, "tle_line2": TLE_LINE2},
+            start_epoch=TEST_EPOCH_START,
+            end_epoch=TEST_EPOCH_END,
+            title="ISS Altitude",
+        )
+        _assert_plot_result(result)
+
+    def test_invalid_satellite(self):
+        result = plot_altitude(
+            satellite={"source": "magic"},
+            start_epoch=TEST_EPOCH_START,
+            end_epoch=TEST_EPOCH_END,
+        )
+        assert "error" in result
+
+    def test_end_before_start(self):
+        result = plot_altitude(
+            satellite={"source": "tle", "tle_line1": TLE_LINE1, "tle_line2": TLE_LINE2},
+            start_epoch=TEST_EPOCH_END,
+            end_epoch=TEST_EPOCH_START,
+        )
+        assert "error" in result
+
+    def test_altitude_range_reasonable(self):
+        """ISS-like orbit should have altitude between ~200-500 km."""
+        result = plot_altitude(
+            satellite={"source": "tle", "tle_line1": TLE_LINE1, "tle_line2": TLE_LINE2},
+            start_epoch=TEST_EPOCH_START,
+            end_epoch=TEST_EPOCH_END,
+        )
+        _assert_plot_result(result)
+        summary = result[0].text
+        # Extract min/max from "Range: 419.1 - 423.2 km."
+        import re
+        match = re.search(r"Range: ([\d.]+) - ([\d.]+) km", summary)
+        assert match, f"Could not parse altitude range from: {summary}"
+        alt_min = float(match.group(1))
+        alt_max = float(match.group(2))
+        assert 100 < alt_min < 600
+        assert 100 < alt_max < 600
+
+
+class TestPlotAltitudeFromGP:
+    def test_sgp4(self):
+        result = plot_altitude_from_gp(
+            gp_record=FAKE_GP_RECORD,
+            start_epoch=TEST_EPOCH_START,
+            end_epoch=TEST_EPOCH_END,
+        )
+        _assert_plot_result(result)
+
+    def test_keplerian(self):
+        result = plot_altitude_from_gp(
+            gp_record=FAKE_GP_RECORD,
+            start_epoch=TEST_EPOCH_START,
+            end_epoch=TEST_EPOCH_END,
+            propagator_type="keplerian",
         )
         _assert_plot_result(result)
 
