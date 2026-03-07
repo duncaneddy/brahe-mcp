@@ -5,7 +5,7 @@ from brahe.celestrak import CelestrakClient, CelestrakQuery, SupGPSource
 from loguru import logger
 
 from brahe_mcp.server import mcp
-from brahe_mcp.utils import error_response
+from brahe_mcp.utils import error_response, serialize_gp_record
 
 _client = CelestrakClient()
 
@@ -61,34 +61,6 @@ _GP_RECORD_FIELDS = [
     "LAUNCH_DATE", "DECAY_DATE", "RCS_SIZE",
 ]
 
-
-def _serialize_gp_record(record: brahe.GPRecord) -> dict:
-    """Extract key fields from a GPRecord into a plain dict."""
-    return {
-        "object_name": record.object_name,
-        "norad_cat_id": record.norad_cat_id,
-        "object_id": record.object_id,
-        "epoch": record.epoch,
-        "inclination": record.inclination,
-        "eccentricity": record.eccentricity,
-        "ra_of_asc_node": record.ra_of_asc_node,
-        "arg_of_pericenter": record.arg_of_pericenter,
-        "mean_anomaly": record.mean_anomaly,
-        "mean_motion": record.mean_motion,
-        "bstar": record.bstar,
-        "semimajor_axis": record.semimajor_axis,
-        "period": record.period,
-        "apoapsis": record.apoapsis,
-        "periapsis": record.periapsis,
-        "classification_type": record.classification_type,
-        "object_type": record.object_type,
-        "country_code": record.country_code,
-        "launch_date": record.launch_date,
-        "decay_date": record.decay_date,
-        "tle_line0": record.tle_line0,
-        "tle_line1": record.tle_line1,
-        "tle_line2": record.tle_line2,
-    }
 
 
 def _serialize_satcat_record(record) -> dict:
@@ -199,7 +171,7 @@ def get_celestrak_gp(
         logger.error("CelesTrak GP error: {}", exc)
         return error_response(f"CelesTrak GP lookup failed: {exc}")
 
-    serialized = [_serialize_gp_record(r) for r in records]
+    serialized = [serialize_gp_record(r) for r in records]
     if limit is not None and limit > 0:
         serialized = serialized[:limit]
 
@@ -246,7 +218,7 @@ def get_celestrak_sup_gp(
         logger.error("CelesTrak supplemental GP error: {}", exc)
         return error_response(f"CelesTrak supplemental GP lookup failed: {exc}")
 
-    serialized = [_serialize_gp_record(r) for r in records]
+    serialized = [serialize_gp_record(r) for r in records]
     if limit is not None and limit > 0:
         serialized = serialized[:limit]
 
@@ -428,7 +400,7 @@ def query_celestrak(
     if qt == "satcat":
         serialized = [_serialize_satcat_record(r) for r in records]
     else:
-        serialized = [_serialize_gp_record(r) for r in records]
+        serialized = [serialize_gp_record(r) for r in records]
 
     return {
         "query_type": qt,

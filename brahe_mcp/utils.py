@@ -2,6 +2,42 @@
 
 import brahe
 
+def serialize_gp_record(record: brahe.GPRecord) -> dict:
+    """Extract key fields from a GPRecord into a plain dict.
+
+    Args:
+        record: A brahe GPRecord from CelesTrak or SpaceTrack queries.
+
+    Returns:
+        Dict with orbital elements and TLE data.
+    """
+    return {
+        "object_name": record.object_name,
+        "norad_cat_id": record.norad_cat_id,
+        "object_id": record.object_id,
+        "epoch": record.epoch,
+        "inclination": record.inclination,
+        "eccentricity": record.eccentricity,
+        "ra_of_asc_node": record.ra_of_asc_node,
+        "arg_of_pericenter": record.arg_of_pericenter,
+        "mean_anomaly": record.mean_anomaly,
+        "mean_motion": record.mean_motion,
+        "bstar": record.bstar,
+        "semimajor_axis": record.semimajor_axis,
+        "period": record.period,
+        "apoapsis": record.apoapsis,
+        "periapsis": record.periapsis,
+        "classification_type": record.classification_type,
+        "object_type": record.object_type,
+        "country_code": record.country_code,
+        "launch_date": record.launch_date,
+        "decay_date": record.decay_date,
+        "tle_line0": record.tle_line0,
+        "tle_line1": record.tle_line1,
+        "tle_line2": record.tle_line2,
+    }
+
+
 VALID_ANGLE_FORMATS = {
     "degrees": brahe.AngleFormat.DEGREES,
     "radians": brahe.AngleFormat.RADIANS,
