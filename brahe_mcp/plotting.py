@@ -554,6 +554,7 @@ def plot_ground_track(
                 ground_stations=gs_locations,
                 show_grid=show_grid,
                 show_legend=show_legend,
+                basemap="stock",
                 backend="matplotlib",
             )
     except Exception as e:
