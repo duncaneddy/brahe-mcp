@@ -375,10 +375,13 @@ def _sgp4_from_gp(gp_record: dict, step_size: float = 60.0) -> brahe.SGPPropagat
 
 
 def _eci_state_from_gp(gp_record: dict) -> tuple[np.ndarray, brahe.Epoch]:
-    """Convert GP record orbital elements to an ECI state vector.
+    """Convert GP record to an osculating ECI state vector via SGP4.
 
-    Uses the OMM Keplerian elements (a, e, i, RAAN, argp, M) from the GP record
-    and converts to Cartesian ECI via brahe.state_koe_to_eci().
+    GP records contain mean elements fit to the SGP4 theory, so converting
+    them directly with ``state_koe_to_eci()`` produces a theory-inconsistent
+    state.  Instead, we initialize an SGP4 propagator with the OMM elements
+    and evaluate ``state_eci()`` at the TLE epoch to obtain a physically
+    consistent osculating Cartesian state.
 
     Args:
         gp_record: Dict from serialize_gp_record().
@@ -387,29 +390,11 @@ def _eci_state_from_gp(gp_record: dict) -> tuple[np.ndarray, brahe.Epoch]:
         Tuple of (state_eci, epoch).
 
     Raises:
-        ValueError: If required fields are missing.
+        ValueError: If required OMM fields are missing.
     """
-    required = ["semimajor_axis", "eccentricity", "inclination",
-                "ra_of_asc_node", "arg_of_pericenter", "mean_anomaly", "epoch"]
-    missing = [k for k in required if gp_record.get(k) is None]
-    if missing:
-        raise ValueError(f"GP record missing required fields: {missing}")
-
-    # GP record elements are in degrees and km for semimajor axis
-    a_km = gp_record["semimajor_axis"]
-    a_m = a_km * 1000.0  # Convert km to meters
-    koe = np.array([
-        a_m,
-        gp_record["eccentricity"],
-        gp_record["inclination"],
-        gp_record["ra_of_asc_node"],
-        gp_record["arg_of_pericenter"],
-        gp_record["mean_anomaly"],
-    ])
-
-    state_eci = brahe.state_koe_to_eci(koe, brahe.AngleFormat.DEGREES)
-    epoch = parse_epoch(gp_record["epoch"])
-
+    prop = _sgp4_from_gp(gp_record)
+    epoch = prop.epoch
+    state_eci = prop.state_eci(epoch)
     return state_eci, epoch
 
 
