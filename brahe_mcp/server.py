@@ -11,3 +11,4 @@ import brahe_mcp.celestrak  # noqa: F401, E402
 import brahe_mcp.spacetrack  # noqa: F401, E402
 import brahe_mcp.gcat  # noqa: F401, E402
 import brahe_mcp.groundstations  # noqa: F401, E402
+import brahe_mcp.propagation  # noqa: F401, E402
