@@ -34,7 +34,8 @@ CONSTANTS: dict[str, dict] = {
     "RAD2AS": {"value": brahe.RAD2AS, "unit": "arcsec/rad", "description": "Radians to arcseconds conversion factor", "category": "math"},
     # Time constants
     "MJD_ZERO": {"value": brahe.MJD_ZERO, "unit": "days", "description": "Modified Julian Date zero point (JD offset)", "category": "time"},
-    "MJD2000": {"value": brahe.MJD2000, "unit": "days", "description": "Modified Julian Date of J2000 epoch", "category": "time"},
+    "MJD_J2000": {"value": brahe.MJD_J2000, "unit": "days", "description": "Modified Julian Date of J2000 epoch", "category": "time"},
+    "JD_J2000": {"value": brahe.JD_J2000, "unit": "days", "description": "Julian Date of J2000 epoch", "category": "time"},
     "GPS_ZERO": {"value": brahe.GPS_ZERO, "unit": "days", "description": "MJD of GPS epoch (Jan 6, 1980)", "category": "time"},
     "GPS_TAI": {"value": brahe.GPS_TAI, "unit": "s", "description": "GPS to TAI offset", "category": "time"},
     "TAI_GPS": {"value": brahe.TAI_GPS, "unit": "s", "description": "TAI to GPS offset", "category": "time"},
