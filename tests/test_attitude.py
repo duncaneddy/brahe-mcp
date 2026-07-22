@@ -2,7 +2,13 @@ import numpy as np
 import brahe
 from brahe.attitude import EulerAngle, EulerAngleOrder, EulerAxis
 
-from brahe_mcp.attitude import convert_attitude, list_attitude_options
+from brahe_mcp.attitude import (
+    axis_rotation_matrix,
+    compose_rotations,
+    convert_attitude,
+    list_attitude_options,
+    quaternion_slerp,
+)
 
 
 def test_euler_angle_properties_are_radians():
@@ -191,14 +197,14 @@ def test_zero_quaternion_produces_finite_error_not_nan_success():
     assert "error" in res
 
 
-from brahe_mcp.attitude import axis_rotation_matrix, compose_rotations, quaternion_slerp
-
-
-def test_axis_rotation_matrix_matches_brahe():
-    res = axis_rotation_matrix("z", 90.0)
-    assert "error" not in res
-    expected = brahe.attitude.Rz(90.0, brahe.AngleFormat.DEGREES)
-    assert np.allclose(res["output"]["matrix"], np.array(expected))
+def test_axis_rotation_matrix_matches_brahe_all_axes():
+    for axis, fn in (("x", brahe.attitude.Rx),
+                     ("y", brahe.attitude.Ry),
+                     ("z", brahe.attitude.Rz)):
+        res = axis_rotation_matrix(axis, 37.0)
+        assert "error" not in res, axis
+        assert np.allclose(res["output"]["matrix"],
+                           np.array(fn(37.0, brahe.AngleFormat.DEGREES))), axis
 
 
 def test_axis_rotation_matrix_all_axes_orthonormal():
@@ -219,6 +225,16 @@ def test_axis_rotation_invalid_axis():
     res = axis_rotation_matrix("w", 90.0)
     assert "error" in res
     assert "valid_axes" in res
+
+
+def test_axis_rotation_non_finite_angle_returns_error_not_nan_success():
+    """1e400 parses to inf; the matrix then contains NaN/Inf, which is not
+    valid JSON (RFC 8259). This must surface as an error dict, never a
+    success envelope containing non-finite values.
+    """
+    res = axis_rotation_matrix("z", 1e400)
+    assert "error" in res
+    assert "output" not in res
 
 
 def test_compose_rotations_applies_first_element_first():
@@ -297,4 +313,10 @@ def test_slerp_t_out_of_range_errors():
 
 def test_slerp_bad_quaternion_errors():
     res = quaternion_slerp([1.0, 0.0], [1.0, 0.0, 0.0, 0.0], 0.5)
+    assert "error" in res
+
+
+def test_slerp_non_numeric_t_returns_error_not_raise():
+    """A non-numeric t must return an error dict, never raise TypeError."""
+    res = quaternion_slerp([1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], "not-a-number")
     assert "error" in res

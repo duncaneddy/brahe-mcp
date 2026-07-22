@@ -287,6 +287,10 @@ def axis_rotation_matrix(
         logger.error("Axis rotation error: {}", e)
         return error_response(f"Rotation error: {e}")
 
+    matrix = np.array(rot.to_matrix(), dtype=float).tolist()
+    if not _all_finite(matrix):
+        return error_response("Rotation produced non-finite output", axis=key)
+
     return {
         "input": {
             "axis": key,
@@ -294,7 +298,7 @@ def axis_rotation_matrix(
             "angle_format": angle_format.lower(),
         },
         "output": {
-            "matrix": np.array(rot.to_matrix(), dtype=float).tolist()
+            "matrix": matrix
         },
     }
 
@@ -319,6 +323,12 @@ def compose_rotations(
         output_repr: Representation for the composed result.
         scalar_first: Quaternion ordering for both input and output.
         angle_format: "degrees" (default) or "radians".
+
+    Note:
+        When output_repr is "euler_angle", the output always uses ZYX order
+        regardless of any per-entry "order" (which only governs parsing of
+        euler_angle input entries). The returned value self-describes via its
+        "order" field.
     """
     dst = output_repr.lower()
     if dst not in REPRESENTATIONS:
@@ -415,6 +425,11 @@ def quaternion_slerp(
             f"Unknown output_repr: {output_repr!r}",
             valid_representations=sorted(REPRESENTATIONS),
         )
+
+    try:
+        t = float(t)
+    except (TypeError, ValueError):
+        return error_response(f"t must be a number, got {t!r}")
 
     if not 0.0 <= t <= 1.0:
         return error_response(f"t must be in [0, 1], got {t}")
