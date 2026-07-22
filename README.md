@@ -13,6 +13,30 @@ This project provides a Model Context Protocol (MCP) server that exposes the ast
 
 ![demo](demo.gif)
 
+## Capabilities
+
+Recent additions expose more of brahe's 1.7.0 astrodynamics surface as MCP tools:
+
+| Group | Tools | Notes |
+| --- | --- | --- |
+| Frame transforms | `list_frame_options`, `transform_frame` | Position/state/rotation transforms across GCRF, ITRF, EME2000, GSE, EMR, SER, EMBI, SSBI, lunar (LCI/LFME/LFPA), Mars (MCI/MCMF), the Synodic rotating frame, and generic body frames. |
+| SPICE & body ephemerides | `list_ephemeris_options`, `list_spice_kernels`, `load_spice_kernel`, `load_common_spice_kernels`, `unload_spice_kernel`, `get_body_state` | Manage SPICE kernels and query planet/Moon/Sun/barycenter states via SPICE. |
+| Small bodies | `list_smallbody_options`, `lookup_small_body`, `get_small_body_ephemeris` | Look up asteroids/comets via the JPL Small-Body Database (SBDB) and sample ephemerides generated on demand via JPL Horizons. Both make live JPL network calls. |
+| 3D plots | `plot_trajectory_3d`, `plot_synodic_3d` | Interactive 3D trajectory plots about Earth or in a synodic (rotating two-body) frame; each returns an inline PNG plus a saved interactive HTML file. |
+
+### Numerical propagation
+
+`propagate_numerical` supports non-Earth central bodies (`central_body`: `earth`, `moon`, `mars`, `emb`, `ssb`, or a NAIF id) with `bci`/`bcbf` output frames, plus two optional structured config dicts that replace the previous per-force keyword arguments:
+
+- `force_config`: `{gravity, drag, srp, third_body, tides, relativity, frame_transform}`
+- `integrator`: `{preset, method, abs_tol, rel_tol, initial_step, max_step, store_accelerations}`
+
+Call `list_propagation_options()` to discover the valid keys and values for both dicts.
+
+### Plotting output
+
+Plotting depends on the `brahe[plots]` extra, which is installed automatically as a dependency of `brahe-mcp`. The 3D plot tools also write an interactive HTML file to disk; the directory is configurable via the `BRAHE_MCP_OUTPUT_DIR` environment variable (default `<tempdir>/brahe-mcp-plots`).
+
 ## Installation
 
 ```bash
