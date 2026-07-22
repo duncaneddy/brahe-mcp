@@ -13,6 +13,7 @@ import brahe_mcp.constants  # noqa: F401, E402
 import brahe_mcp.epochs  # noqa: F401, E402
 import brahe_mcp.orbits  # noqa: F401, E402
 import brahe_mcp.coordinates  # noqa: F401, E402
+import brahe_mcp.frames  # noqa: F401, E402
 import brahe_mcp.celestrak  # noqa: F401, E402
 import brahe_mcp.spacetrack  # noqa: F401, E402
 import brahe_mcp.gcat  # noqa: F401, E402
