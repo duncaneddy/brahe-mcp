@@ -470,3 +470,83 @@ def convert_equinoctial(
             "components": dict(zip(labels, out_list)),
         },
     }
+
+
+MEAN_OSC_DIRECTIONS = {"mean_to_osc", "osc_to_mean"}
+MEAN_ELEMENT_METHODS = {"brouwer_lyddane", "numerical"}
+
+
+@mcp.tool()
+def convert_mean_osculating(
+    state: list[float],
+    direction: str,
+    method: str = "brouwer_lyddane",
+    angle_format: str = "degrees",
+) -> dict:
+    """Convert a single Keplerian state between mean and osculating elements.
+
+    Uses the Brouwer-Lyddane analytical theory. The numerical method is
+    batch-only; use convert_mean_osculating_batch for it.
+
+    Brouwer-Lyddane is a first-order theory, so mean -> osc -> mean does not
+    return the input exactly. Residuals grow for near-circular orbits where
+    omega and M are ill-conditioned.
+
+    Args:
+        state: 6-element Keplerian [a, e, i, RAAN, omega, M], a in meters.
+        direction: "mean_to_osc" or "osc_to_mean".
+        method: "brouwer_lyddane" (default). "numerical" is rejected here.
+        angle_format: "degrees" (default) or "radians".
+    """
+    key = direction.lower()
+    if key not in MEAN_OSC_DIRECTIONS:
+        return error_response(
+            f"Unknown direction: {direction!r}",
+            valid_directions=sorted(MEAN_OSC_DIRECTIONS),
+        )
+
+    method_key = method.lower()
+    if method_key == "numerical":
+        return error_response(
+            "The numerical mean-element method is batch-only. Use "
+            "convert_mean_osculating_batch with a series of epochs and states.",
+            valid_methods=["brouwer_lyddane"],
+        )
+    if method_key not in MEAN_ELEMENT_METHODS:
+        return error_response(
+            f"Unknown method: {method!r}",
+            valid_methods=sorted(MEAN_ELEMENT_METHODS),
+        )
+
+    if len(state) != 6:
+        return error_response(
+            f"state must have exactly 6 elements, got {len(state)}"
+        )
+
+    fmt_lower = angle_format.lower()
+    if fmt_lower not in VALID_ANGLE_FORMATS:
+        return error_response(f"Invalid angle_format: {angle_format!r}")
+    angle_fmt = VALID_ANGLE_FORMATS[fmt_lower]
+
+    bl = brahe.MeanElementMethod.BROUWER_LYDDANE
+    try:
+        vec = np.array(state, dtype=float)
+        if key == "mean_to_osc":
+            out = brahe.state_koe_mean_to_osc(vec, bl, angle_fmt)
+        else:
+            out = brahe.state_koe_osc_to_mean(vec, bl, angle_fmt)
+    except Exception as e:
+        logger.error("Mean/osculating conversion error: {}", e)
+        return error_response(f"Conversion error: {e}")
+
+    out_list = np.array(out, dtype=float).tolist()
+    logger.debug("Mean/osc {}: {} -> {}", key, state, out_list)
+    return {
+        "direction": key,
+        "input": {"state": state, "angle_format": fmt_lower},
+        "output": {
+            "state": out_list,
+            "method": "brouwer_lyddane",
+            "components": dict(zip(_KOE_LABELS, out_list)),
+        },
+    }

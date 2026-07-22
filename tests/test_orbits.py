@@ -292,3 +292,65 @@ def test_equinoctial_radians_matches_degrees():
     # Only l (index 5) is angular.
     assert np.allclose(deg["output"]["state"][:5], rad["output"]["state"][:5])
     assert np.isclose(np.radians(deg["output"]["state"][5]), rad["output"]["state"][5])
+
+
+# --- convert_mean_osculating ---
+
+from brahe_mcp.orbits import convert_mean_osculating
+
+
+def test_mean_to_osc_matches_brahe():
+    res = convert_mean_osculating(KOE, "mean_to_osc")
+    assert "error" not in res
+    expected = brahe.state_koe_mean_to_osc(
+        np.array(KOE), brahe.MeanElementMethod.BROUWER_LYDDANE,
+        brahe.AngleFormat.DEGREES,
+    )
+    assert np.allclose(res["output"]["state"], expected)
+    assert res["output"]["method"] == "brouwer_lyddane"
+
+
+def test_osc_to_mean_matches_brahe():
+    res = convert_mean_osculating(KOE, "osc_to_mean")
+    expected = brahe.state_koe_osc_to_mean(
+        np.array(KOE), brahe.MeanElementMethod.BROUWER_LYDDANE,
+        brahe.AngleFormat.DEGREES,
+    )
+    assert np.allclose(res["output"]["state"], expected)
+
+
+def test_mean_osc_is_not_a_noop():
+    res = convert_mean_osculating(KOE, "mean_to_osc")
+    assert not np.allclose(res["output"]["state"], KOE)
+
+
+def test_mean_osc_roundtrip_within_bl_theory_error():
+    # Brouwer-Lyddane is a first-order theory, so mean -> osc -> mean is NOT
+    # exact. Tolerances below are sized from measured worst-case residuals
+    # across three test orbits (see spec section 6). Do not tighten these:
+    # correct code fails a strict np.allclose here.
+    fwd = convert_mean_osculating(KOE, "mean_to_osc")
+    back = convert_mean_osculating(fwd["output"]["state"], "osc_to_mean")
+    got = np.array(back["output"]["state"])
+    ref = np.array(KOE)
+    assert abs(got[0] - ref[0]) < 50.0        # a, meters
+    assert abs(got[1] - ref[1]) < 1e-5        # e
+    d_ang = (got[2:] - ref[2:] + 180.0) % 360.0 - 180.0
+    assert np.all(np.abs(d_ang) < 1.0)        # i, RAAN, omega, M in degrees
+
+
+def test_mean_osc_numerical_rejected_with_pointer_to_batch():
+    res = convert_mean_osculating(KOE, "mean_to_osc", method="numerical")
+    assert "error" in res
+    assert "batch" in res["error"].lower()
+
+
+def test_mean_osc_invalid_direction():
+    res = convert_mean_osculating(KOE, "sideways")
+    assert "error" in res
+    assert "valid_directions" in res
+
+
+def test_mean_osc_bad_length():
+    res = convert_mean_osculating([1.0, 2.0], "mean_to_osc")
+    assert "error" in res
