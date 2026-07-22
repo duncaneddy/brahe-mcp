@@ -23,6 +23,9 @@ def test_convert_attitude_value_schema_is_not_string():
     tools = {t.name: t for t in asyncio.run(mcp.list_tools())}
     schema = tools["convert_attitude"].inputSchema["properties"]["value"]
     assert schema.get("type") != "string", schema
+    # Pin the contract, not just the absence of one wrong answer.
+    declared = {branch.get("type") for branch in schema.get("anyOf", [])}
+    assert {"object", "array"} <= declared, schema
 
 
 def test_euler_angle_properties_are_radians():

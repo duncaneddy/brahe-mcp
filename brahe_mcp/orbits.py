@@ -626,6 +626,13 @@ def convert_mean_osculating_batch(
     Numerical mean_to_osc inverts the averaging by differential correction and
     therefore requires force_config. Numerical osc_to_mean does not.
 
+    Singular states reject the WHOLE call rather than being dropped: if any row
+    converts to a non-finite result (Brouwer-Lyddane is singular at zero
+    inclination, at 180 degrees, and at the critical inclinations 63.4349 and
+    116.565 degrees), an error is returned whose non_finite_rows context lists
+    the offending row indices. Dropping them silently would decouple the
+    returned series length from n_output and dropped_by_edge_handling.
+
     Args:
         epochs: ISO epoch strings, one per row of states.
         states: Rows of Keplerian [a, e, i, RAAN, omega, M], a in meters.
