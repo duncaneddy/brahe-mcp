@@ -400,6 +400,28 @@ class TestNumericalConfig:
         )
         assert "error" in res
 
+    def test_bad_force_config_eclipse_model_errors(self):
+        from brahe_mcp.propagation import propagate_numerical
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=self._leo_state(),
+            target_epoch="2024-01-01T00:10:00Z",
+            force_model="two_body",
+            force_config={"srp": {"eclipse_model": "notamodel"}},
+        )
+        assert "error" in res
+
+    def test_bad_integrator_tolerance_type_errors(self):
+        from brahe_mcp.propagation import propagate_numerical
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=self._leo_state(),
+            target_epoch="2024-01-01T00:10:00Z",
+            force_model="two_body",
+            integrator={"abs_tol": [1, 2, 3]},
+        )
+        assert "error" in res
+
 
 # ---------------------------------------------------------------------------
 # Propagate from GP record

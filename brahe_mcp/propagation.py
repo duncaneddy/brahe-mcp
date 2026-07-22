@@ -769,13 +769,15 @@ def propagate_numerical(
 
     try:
         force_cfg = _build_force_config(force_model, central_body, force_config)
-    except ValueError as e:
-        return _prop_error(str(e), valid_presets=sorted(FORCE_MODEL_PRESETS.keys()))
+    except (ValueError, KeyError, AttributeError, TypeError) as e:
+        return _prop_error(
+            f"Invalid force_config: {e}", valid_presets=sorted(FORCE_MODEL_PRESETS.keys())
+        )
 
     try:
         prop_config = _build_propagation_config(integrator)
-    except ValueError as e:
-        return _prop_error(str(e))
+    except (ValueError, KeyError, AttributeError, TypeError) as e:
+        return _prop_error(f"Invalid integrator config: {e}")
 
     if force_cfg.requires_params() and spacecraft_params is None:
         return _prop_error(
