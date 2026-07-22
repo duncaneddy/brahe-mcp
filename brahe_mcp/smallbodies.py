@@ -84,7 +84,11 @@ def get_small_body_ephemeris(
     duration = float(t1 - t0)
     if duration <= 0:
         return error_response("stop must be after start")
-    n = int(duration // step_seconds) + 1
+    n_regular = int(duration // step_seconds) + 1
+    # Include the exact stop epoch as a final sample when the span isn't an
+    # even multiple of step_seconds, so the requested stop is always covered.
+    include_stop = (duration - (n_regular - 1) * step_seconds) > 1e-6
+    n = n_regular + (1 if include_stop else 0)
     if n > MAX_EPHEMERIS_POINTS:
         return error_response(
             f"Span would produce {n} points, exceeding {MAX_EPHEMERIS_POINTS}. Increase step_seconds."
@@ -123,10 +127,13 @@ def get_small_body_ephemeris(
 
     states = []
     try:
-        for i in range(n):
+        for i in range(n_regular):
             epc = t0 + i * step_seconds
             vec = brahe.spk_state(spkid, center_naif, epc)
             states.append({"epoch": str(epc), "vector": np.array(vec).tolist()})
+        if include_stop:
+            vec = brahe.spk_state(spkid, center_naif, t1)
+            states.append({"epoch": str(t1), "vector": np.array(vec).tolist()})
     except Exception as e:
         return error_response(f"Ephemeris sampling failed: {e}")
 
