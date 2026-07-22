@@ -354,3 +354,118 @@ def test_mean_osc_invalid_direction():
 def test_mean_osc_bad_length():
     res = convert_mean_osculating([1.0, 2.0], "mean_to_osc")
     assert "error" in res
+
+
+# --- convert_mean_osculating_batch ---
+
+from brahe_mcp.orbits import convert_mean_osculating_batch
+
+E0 = "2024-01-01T00:00:00Z"
+
+
+def _series(n=100, step=60.0):
+    e0 = brahe.Epoch(E0)
+    epochs = [str(e0 + step * i) for i in range(n)]
+    states = [list(KOE) for _ in range(n)]
+    return epochs, states
+
+
+def test_batch_brouwer_lyddane_preserves_length():
+    epochs, states = _series(10)
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" not in res
+    assert res["output"]["n_input"] == 10
+    assert res["output"]["n_output"] == 10
+    assert res["output"]["dropped_by_edge_handling"] == 0
+    assert len(res["output"]["states"]) == 10
+
+
+def test_batch_bl_matches_single_state_tool():
+    epochs, states = _series(3)
+    batch = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    single = convert_mean_osculating(KOE, "mean_to_osc")
+    assert np.allclose(batch["output"]["states"][0], single["output"]["state"])
+
+
+def test_batch_numerical_osc_to_mean_shortens_series():
+    epochs, states = _series(100)
+    res = convert_mean_osculating_batch(
+        epochs, states, "osc_to_mean", method="numerical", window_seconds=5400.0
+    )
+    assert "error" not in res
+    assert res["output"]["n_input"] == 100
+    # Windowed averaging with truncation consumes the series edges.
+    assert res["output"]["n_output"] < 100
+    assert res["output"]["dropped_by_edge_handling"] == (
+        100 - res["output"]["n_output"]
+    )
+    assert len(res["output"]["epochs"]) == res["output"]["n_output"]
+
+
+def test_batch_numerical_mean_to_osc_requires_force_config():
+    epochs, states = _series(20)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", method="numerical"
+    )
+    assert "error" in res
+    assert "force_config" in res["error"]
+
+
+def test_batch_numerical_mean_to_osc_succeeds_with_force_config():
+    """Happy path for the heaviest code path. Verified to run in ~0.2s."""
+    epochs, states = _series(20)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc",
+        method="numerical", force_config={}, force_model="earth_gravity",
+    )
+    assert "error" not in res
+    # mean_to_osc preserves length; only osc_to_mean truncates.
+    assert res["output"]["n_output"] == 20
+    assert res["output"]["dropped_by_edge_handling"] == 0
+    assert not np.allclose(res["output"]["states"][0], KOE)
+
+
+def test_batch_length_mismatch_errors():
+    epochs, states = _series(5)
+    res = convert_mean_osculating_batch(epochs[:3], states, "mean_to_osc")
+    assert "error" in res
+    assert "3" in res["error"] and "5" in res["error"]
+
+
+def test_batch_bad_row_length_errors():
+    epochs, states = _series(3)
+    states[1] = [1.0, 2.0]
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" in res
+    assert "1" in res["error"]
+
+
+def test_batch_invalid_alignment_errors():
+    epochs, states = _series(3)
+    res = convert_mean_osculating_batch(
+        epochs, states, "osc_to_mean", method="numerical", alignment="sideways"
+    )
+    assert "error" in res
+    assert "valid_alignments" in res
+
+
+def test_batch_invalid_edge_errors():
+    epochs, states = _series(3)
+    res = convert_mean_osculating_batch(
+        epochs, states, "osc_to_mean", method="numerical", edge="nope"
+    )
+    assert "error" in res
+    assert "valid_edges" in res
+
+
+def test_batch_empty_input_errors():
+    res = convert_mean_osculating_batch([], [], "mean_to_osc")
+    assert "error" in res
+
+
+def test_list_orbital_computations_includes_mean_elements():
+    opts = list_orbital_computations()
+    mec = opts["mean_element_conversions"]
+    assert "convert_mean_osculating_batch" in mec["tools"]
+    assert "numerical" in mec["methods"]
+    assert mec["equinoctial_components"] == ["a_m", "h", "k", "p", "q", "l"]

@@ -3,7 +3,7 @@ import brahe
 from loguru import logger
 
 from brahe_mcp.server import mcp
-from brahe_mcp.utils import error_response
+from brahe_mcp.utils import error_response, parse_epoch
 
 VALID_ANGLE_FORMATS = {
     "degrees": brahe.AngleFormat.DEGREES,
@@ -244,6 +244,25 @@ def list_orbital_computations() -> dict:
             }
             for name, info in ANOMALY_CONVERSIONS.items()
         ],
+        "mean_element_conversions": {
+            "tools": [
+                "convert_equinoctial",
+                "convert_mean_osculating",
+                "convert_mean_osculating_batch",
+            ],
+            "directions": sorted(MEAN_OSC_DIRECTIONS),
+            "methods": sorted(MEAN_ELEMENT_METHODS),
+            "equinoctial_components": list(_EQN_LABELS),
+            "keplerian_components": list(_KOE_LABELS),
+            "notes": [
+                "The numerical method is batch-only.",
+                "Numerical mean_to_osc requires force_config.",
+                "Numerical osc_to_mean with edge='truncate' returns fewer "
+                "states than it receives; read n_output.",
+                "Brouwer-Lyddane is a first-order theory; mean -> osc -> mean "
+                "is not exact.",
+            ],
+        },
     }
 
 
@@ -548,5 +567,192 @@ def convert_mean_osculating(
             "state": out_list,
             "method": "brouwer_lyddane",
             "components": dict(zip(_KOE_LABELS, out_list)),
+        },
+    }
+
+
+_WINDOW_ALIGNMENTS = {
+    "centered": brahe.WindowAlignment.CENTERED,
+    "leading": brahe.WindowAlignment.LEADING,
+    "trailing": brahe.WindowAlignment.TRAILING,
+}
+
+_WINDOW_EDGES = {
+    "truncate": brahe.WindowEdgeHandling.TRUNCATE,
+    "preserve_window": brahe.WindowEdgeHandling.PRESERVE_WINDOW,
+}
+
+
+@mcp.tool()
+def convert_mean_osculating_batch(
+    epochs: list[str],
+    states: list[list[float]],
+    direction: str,
+    method: str = "brouwer_lyddane",
+    window_seconds: float = 5400.0,
+    alignment: str = "centered",
+    edge: str = "truncate",
+    force_model: str = "earth_gravity",
+    force_config: dict | None = None,
+    integrator: dict | None = None,
+    tolerance: float = 1.0,
+    max_iterations: int = 50,
+    angle_format: str = "degrees",
+) -> dict:
+    """Convert a series of Keplerian states between mean and osculating elements.
+
+    Two methods are available. "brouwer_lyddane" maps each state independently
+    and always preserves series length. "numerical" applies windowed averaging;
+    with edge="truncate" it returns FEWER states than it receives, because the
+    averaging window consumes the series edges. Always read n_output rather
+    than assuming it equals n_input.
+
+    Numerical mean_to_osc inverts the averaging by differential correction and
+    therefore requires force_config. Numerical osc_to_mean does not.
+
+    Args:
+        epochs: ISO epoch strings, one per row of states.
+        states: Rows of Keplerian [a, e, i, RAAN, omega, M], a in meters.
+        direction: "mean_to_osc" or "osc_to_mean".
+        method: "brouwer_lyddane" (default) or "numerical".
+        window_seconds: Averaging window length. Numerical only.
+        alignment: "centered" (default), "leading", or "trailing".
+        edge: "truncate" (default) or "preserve_window".
+        force_model: Force model preset for numerical mean_to_osc.
+            "earth_gravity" (default) uses 20x20 EGM2008 with no drag or SRP,
+            which captures the secular effects mean elements average over and
+            needs no spacecraft parameters. See list_propagation_options() for
+            other presets. Not used by osc_to_mean or by brouwer_lyddane.
+        force_config: Force model override dict for numerical mean_to_osc.
+            Same keys as propagate_numerical; see list_propagation_options().
+            Required for numerical mean_to_osc.
+        integrator: Integrator dict, optional for numerical mean_to_osc.
+            Same keys as propagate_numerical.
+        tolerance: Convergence tolerance on the mean-element residual.
+        max_iterations: Maximum differential-correction iterations.
+        angle_format: "degrees" (default) or "radians".
+    """
+    from brahe_mcp.propagation import (
+        _build_force_config,
+        _build_propagation_config,
+    )
+
+    key = direction.lower()
+    if key not in MEAN_OSC_DIRECTIONS:
+        return error_response(
+            f"Unknown direction: {direction!r}",
+            valid_directions=sorted(MEAN_OSC_DIRECTIONS),
+        )
+
+    method_key = method.lower()
+    if method_key not in MEAN_ELEMENT_METHODS:
+        return error_response(
+            f"Unknown method: {method!r}",
+            valid_methods=sorted(MEAN_ELEMENT_METHODS),
+        )
+
+    if len(epochs) != len(states):
+        return error_response(
+            f"epochs and states must be the same length, got "
+            f"{len(epochs)} epochs and {len(states)} states"
+        )
+    if not epochs:
+        return error_response("epochs and states must not be empty")
+
+    for i, row in enumerate(states):
+        if len(row) != 6:
+            return error_response(
+                f"states[{i}] must have exactly 6 elements, got {len(row)}"
+            )
+
+    fmt_lower = angle_format.lower()
+    if fmt_lower not in VALID_ANGLE_FORMATS:
+        return error_response(f"Invalid angle_format: {angle_format!r}")
+    angle_fmt = VALID_ANGLE_FORMATS[fmt_lower]
+
+    try:
+        epoch_objs = [parse_epoch(e) for e in epochs]
+    except Exception as e:
+        return error_response(f"Invalid epoch: {e}")
+
+    if method_key == "brouwer_lyddane":
+        mean_method = brahe.MeanElementMethod.BROUWER_LYDDANE
+    else:
+        align_key = alignment.lower()
+        if align_key not in _WINDOW_ALIGNMENTS:
+            return error_response(
+                f"Unknown alignment: {alignment!r}",
+                valid_alignments=sorted(_WINDOW_ALIGNMENTS),
+            )
+        edge_key = edge.lower()
+        if edge_key not in _WINDOW_EDGES:
+            return error_response(
+                f"Unknown edge: {edge!r}", valid_edges=sorted(_WINDOW_EDGES)
+            )
+
+        inverse_cfg = None
+        if key == "mean_to_osc":
+            if force_config is None:
+                return error_response(
+                    "Numerical mean_to_osc inverts the windowed average by "
+                    "differential correction and requires force_config. See "
+                    "list_propagation_options() for valid keys, or use "
+                    "method='brouwer_lyddane'."
+                )
+            try:
+                # The "central_body" preset accepts only moon/mars/emb, so it
+                # must NOT be used here. Non-central_body presets ignore the
+                # body argument entirely, so "earth" is inert but explicit.
+                fc = _build_force_config(force_model, "earth", force_config)
+                pc = _build_propagation_config(integrator)
+            except ValueError as e:
+                return error_response(
+                    f"Invalid force_model, force_config, or integrator: {e}"
+                )
+            inverse_cfg = brahe.MeanElementInverseConfig(
+                fc, pc, float(tolerance), int(max_iterations)
+            )
+
+        num_cfg = brahe.MeanElementNumericalMethodConfig(
+            float(window_seconds),
+            _WINDOW_ALIGNMENTS[align_key],
+            _WINDOW_EDGES[edge_key],
+            inverse_cfg,
+        )
+        mean_method = brahe.MeanElementMethod.numerical(num_cfg)
+
+    arr = np.array(states, dtype=float)
+    try:
+        if key == "mean_to_osc":
+            out_epochs, out_states = brahe.batch_state_koe_mean_to_osc(
+                epoch_objs, arr, mean_method, angle_fmt
+            )
+        else:
+            out_epochs, out_states = brahe.batch_state_koe_osc_to_mean(
+                epoch_objs, arr, mean_method, angle_fmt
+            )
+    except Exception as e:
+        logger.error("Batch mean/osculating error: {}", e)
+        return error_response(f"Conversion error: {e}")
+
+    out_list = np.array(out_states, dtype=float).tolist()
+    n_in = len(states)
+    n_out = len(out_list)
+    logger.debug("Batch mean/osc {} {}: {} -> {}", key, method_key, n_in, n_out)
+    return {
+        "direction": key,
+        "input": {
+            "n_states": n_in,
+            "method": method_key,
+            "angle_format": fmt_lower,
+        },
+        "output": {
+            "epochs": [str(e) for e in out_epochs],
+            "states": out_list,
+            "n_input": n_in,
+            "n_output": n_out,
+            "dropped_by_edge_handling": n_in - n_out,
+            "method": method_key,
+            "components": list(_KOE_LABELS),
         },
     }
