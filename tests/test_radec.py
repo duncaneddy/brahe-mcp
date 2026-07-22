@@ -1,7 +1,7 @@
 import numpy as np
 import brahe
 
-from brahe_mcp.radec import convert_radec, list_radec_options
+from brahe_mcp.radec import apply_proper_motion, convert_radec, list_radec_options
 
 
 def test_list_radec_options_structure():
@@ -140,3 +140,61 @@ def test_azel_invalid_epoch():
         [45.0, 20.0, 1.0e9], "RADEC", "AZEL", site=SITE, epoch="not-a-date"
     )
     assert "error" in res
+
+
+E_FROM = "2000-01-01T12:00:00Z"
+E_TO = "2030-01-01T00:00:00Z"
+
+
+def test_apply_proper_motion_matches_brahe():
+    res = apply_proper_motion(
+        269.45, 4.69, -798.0, 10330.0, E_FROM, E_TO,
+        parallax=547.0, radial_velocity=-110.6,
+    )
+    assert "error" not in res
+    expected = brahe.apply_proper_motion(
+        269.45, 4.69, -798.0, 10330.0, 547.0, -110.6,
+        brahe.Epoch(E_FROM), brahe.Epoch(E_TO), brahe.AngleFormat.DEGREES,
+    )
+    assert np.isclose(res["output"]["ra"], expected[0])
+    assert np.isclose(res["output"]["dec"], expected[1])
+
+
+def test_zero_proper_motion_is_near_identity():
+    res = apply_proper_motion(269.45, 4.69, 0.0, 0.0, E_FROM, E_TO)
+    assert np.isclose(res["output"]["ra"], 269.45, atol=1e-9)
+    assert np.isclose(res["output"]["dec"], 4.69, atol=1e-9)
+
+
+def test_proper_motion_moves_position():
+    res = apply_proper_motion(269.45, 4.69, -798.0, 10330.0, E_FROM, E_TO)
+    # 10330 mas/yr over ~30 yr is ~0.086 deg of declination drift.
+    assert abs(res["output"]["dec"] - 4.69) > 1e-3
+
+
+def test_proper_motion_omitted_parallax_defaults_to_none():
+    res = apply_proper_motion(269.45, 4.69, -798.0, 10330.0, E_FROM, E_TO)
+    assert "error" not in res
+    assert res["input"]["parallax"] is None
+
+
+def test_proper_motion_radians_matches_degrees():
+    deg = apply_proper_motion(269.45, 4.69, -798.0, 10330.0, E_FROM, E_TO)
+    rad = apply_proper_motion(
+        np.radians(269.45), np.radians(4.69), -798.0, 10330.0,
+        E_FROM, E_TO, angle_format="radians",
+    )
+    assert np.isclose(np.radians(deg["output"]["ra"]), rad["output"]["ra"], atol=1e-12)
+    assert np.isclose(np.radians(deg["output"]["dec"]), rad["output"]["dec"], atol=1e-12)
+
+
+def test_proper_motion_invalid_epoch_errors():
+    res = apply_proper_motion(269.45, 4.69, 0.0, 0.0, "nope", E_TO)
+    assert "error" in res
+
+
+def test_proper_motion_reports_units():
+    res = apply_proper_motion(269.45, 4.69, 0.0, 0.0, E_FROM, E_TO)
+    assert res["units"]["pm_ra"] == "mas/yr"
+    assert res["units"]["parallax"] == "mas"
+    assert res["units"]["radial_velocity"] == "km/s"

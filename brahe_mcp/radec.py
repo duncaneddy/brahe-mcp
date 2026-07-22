@@ -78,6 +78,12 @@ def list_radec_options() -> dict:
         "position_components": {f: list(v) for f, v in _POSITION_LABELS.items()},
         "state_components": {f: list(v) for f, v in _STATE_LABELS.items()},
         "site_types": sorted(_SITE_TYPES),
+        "proper_motion_units": {
+            "pm_ra": "mas/yr (mu_alpha* = mu_alpha * cos(dec))",
+            "pm_dec": "mas/yr",
+            "parallax": "mas",
+            "radial_velocity": "km/s",
+        },
         "notes": [
             "RADEC <-> ECI/GCRF is a frame-agnostic spherical <-> Cartesian "
             "conversion; it needs no epoch and ECI and GCRF are equivalent.",
@@ -201,5 +207,82 @@ def convert_radec(
             "vector": out_list,
             "frame": dst,
             "components": _label(out_list, dst, labels),
+        },
+    }
+
+
+@mcp.tool()
+def apply_proper_motion(
+    ra: float,
+    dec: float,
+    pm_ra: float,
+    pm_dec: float,
+    epoch_from: str,
+    epoch_to: str,
+    parallax: float | None = None,
+    radial_velocity: float | None = None,
+    angle_format: str = "degrees",
+) -> dict:
+    """Propagate a star's catalog RA/Dec between epochs using proper motion.
+
+    Wraps IAU SOFA's iauPmsafe space-motion routine, which accounts for
+    parallax and radial velocity when supplied.
+
+    Args:
+        ra: Right ascension at epoch_from (degrees or radians per angle_format).
+        dec: Declination at epoch_from (degrees or radians per angle_format).
+        pm_ra: Proper motion in RA. Units: mas/yr. This is the catalog
+            convention mu_alpha* = mu_alpha * cos(dec), matching the pmra
+            column of Hipparcos, Gaia, and most other catalogs.
+        pm_dec: Proper motion in declination. Units: mas/yr.
+        epoch_from: ISO epoch of the catalog position.
+        epoch_to: ISO epoch to propagate the position to.
+        parallax: Annual parallax in mas. Omit if unknown.
+        radial_velocity: Radial velocity in km/s. Omit if unknown.
+        angle_format: "degrees" (default) or "radians", for ra/dec only.
+    """
+    try:
+        fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
+
+    try:
+        e_from = parse_epoch(epoch_from)
+    except Exception as e:
+        return error_response(f"Invalid epoch_from: {e}")
+    try:
+        e_to = parse_epoch(epoch_to)
+    except Exception as e:
+        return error_response(f"Invalid epoch_to: {e}")
+
+    try:
+        ra_out, dec_out = brahe.apply_proper_motion(
+            ra, dec, pm_ra, pm_dec, parallax, radial_velocity, e_from, e_to, fmt
+        )
+    except Exception as e:
+        logger.error("Proper motion error: {}", e)
+        return error_response(f"Proper motion error: {e}")
+
+    logger.debug("Proper motion {} {} -> {} {}", ra, dec, ra_out, dec_out)
+    return {
+        "input": {
+            "ra": ra,
+            "dec": dec,
+            "pm_ra": pm_ra,
+            "pm_dec": pm_dec,
+            "parallax": parallax,
+            "radial_velocity": radial_velocity,
+            "epoch_from": epoch_from,
+            "epoch_to": epoch_to,
+            "angle_format": angle_format.lower(),
+        },
+        "output": {"ra": ra_out, "dec": dec_out, "epoch": epoch_to},
+        "units": {
+            "ra": angle_format.lower(),
+            "dec": angle_format.lower(),
+            "pm_ra": "mas/yr",
+            "pm_dec": "mas/yr",
+            "parallax": "mas",
+            "radial_velocity": "km/s",
         },
     }
