@@ -3,11 +3,14 @@
 import base64
 import io
 import os
+import tempfile
+import uuid
 
 import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 import scienceplots  # noqa: F401, E402
 import brahe  # noqa: E402
 from loguru import logger  # noqa: E402
@@ -51,12 +54,13 @@ def _figure_to_image(fig) -> ImageContent:
     )
 
 
-def _propagator_from_gp(gp_record: dict, propagator_type: str = "sgp4"):
+def _propagator_from_gp(gp_record: dict, propagator_type: str = "sgp4", step_size: float = 60.0):
     """Build a propagator from a GP record dict.
 
     Args:
         gp_record: GP record dict from celestrak/spacetrack tools.
         propagator_type: "sgp4" or "keplerian".
+        step_size: Propagator step size in seconds.
 
     Returns:
         A brahe propagator instance.
@@ -64,9 +68,9 @@ def _propagator_from_gp(gp_record: dict, propagator_type: str = "sgp4"):
     from brahe_mcp._gp import _sgp4_from_gp, _eci_state_from_gp
 
     if propagator_type == "sgp4":
-        return _sgp4_from_gp(gp_record)
+        return _sgp4_from_gp(gp_record, step_size=step_size)
     state_eci, epoch = _eci_state_from_gp(gp_record)
-    return brahe.KeplerianPropagator.from_eci(epoch, state_eci, step_size=60.0)
+    return brahe.KeplerianPropagator.from_eci(epoch, state_eci, step_size=step_size)
 
 
 def _propagate_trajectory(propagator, start_epoch, end_epoch):
@@ -83,6 +87,91 @@ def _propagate_trajectory(propagator, start_epoch, end_epoch):
     propagator.propagate_to(start_epoch)
     propagator.propagate_to(end_epoch)
     return propagator.trajectory
+
+
+def _output_dir() -> str:
+    """Directory for interactive HTML plot output (BRAHE_MCP_OUTPUT_DIR or a temp dir)."""
+    path = os.environ.get(
+        "BRAHE_MCP_OUTPUT_DIR", os.path.join(tempfile.gettempdir(), "brahe-mcp-plots")
+    )
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _plotly_to_outputs(fig, basename: str) -> list:
+    """Render a Plotly figure to an inline PNG + a saved interactive HTML file.
+
+    Renders the PNG first so a Kaleido failure never leaves an orphaned HTML
+    file on disk, and gives each call a unique filename (via a short uuid
+    suffix) so concurrent/repeated calls don't overwrite each other's output.
+    """
+    png_bytes = fig.to_image(format="png", width=1000, height=800, scale=2)
+    unique_name = f"{basename}_{uuid.uuid4().hex[:8]}"
+    html_path = os.path.join(_output_dir(), f"{unique_name}.html")
+    fig.write_html(html_path, include_plotlyjs=True, full_html=True)
+    return [
+        TextContent(type="text", text=f"Interactive 3D plot saved to {html_path}"),
+        ImageContent(
+            type="image",
+            data=base64.b64encode(png_bytes).decode(),
+            mimeType="image/png",
+        ),
+    ]
+
+
+def _trim_trajectory(traj, start_epoch, end_epoch):
+    """Restrict an OrbitTrajectory to samples within [start_epoch, end_epoch].
+
+    Propagators only advance forward from their source epoch, so
+    ``_propagate_trajectory``'s ``propagate_to()`` calls can leave extra
+    leading history in the trajectory (states between the source epoch and
+    start_epoch), or produce no in-window samples at all if start_epoch
+    precedes the source epoch. Trimming ensures the 3D plots show exactly
+    the requested window.
+
+    Bounds are compared with a small time tolerance since ``propagate_to()``
+    can land microseconds beyond the requested epoch, which would otherwise
+    drop the boundary sample from a strict inequality. Note: if start_epoch
+    is before the propagator's source epoch but end_epoch is not, only the
+    in-range tail is returned (no error) since there is no way to propagate
+    backward past the source epoch.
+    """
+    tol = 1e-6  # seconds
+    kept = [
+        (e, traj.state_eci(e))
+        for e in traj.epochs()
+        if float(e - start_epoch) >= -tol and float(e - end_epoch) <= tol
+    ]
+    if not kept:
+        raise ValueError(
+            f"No trajectory samples fall within the requested [{start_epoch}, {end_epoch}] "
+            "window; check that the satellite's epoch is at or before start_epoch."
+        )
+    kept_epochs, kept_states = zip(*kept)
+    return brahe.OrbitTrajectory.from_orbital_data(
+        list(kept_epochs), np.array(kept_states), traj.frame, traj.representation
+    )
+
+
+def _trajectory_from_satellite(satellite: dict, start_epoch, end_epoch, step_size: float = 60.0):
+    """Build an OrbitTrajectory from a satellite source dict (tle/gp_record/state)."""
+    source = (satellite.get("source") or "").lower()
+    if source == "tle":
+        prop = brahe.SGPPropagator.from_tle(
+            satellite["tle_line1"], satellite["tle_line2"], step_size=step_size
+        )
+    elif source == "gp_record":
+        prop = _propagator_from_gp(
+            satellite["gp_record"], satellite.get("propagator_type", "sgp4"), step_size=step_size
+        )
+    elif source == "state":
+        epc = parse_epoch(satellite["epoch"])
+        state = np.array(satellite["state_eci"], dtype=float)
+        prop = brahe.KeplerianPropagator.from_eci(epc, state, step_size=step_size)
+    else:
+        raise ValueError(f"Unknown satellite source: {source!r}. Use 'tle', 'gp_record', or 'state'.")
+    traj = _propagate_trajectory(prop, start_epoch, end_epoch)
+    return _trim_trajectory(traj, start_epoch, end_epoch)
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +284,14 @@ def list_plotting_options() -> dict:
             "plot_gabbard_diagram": {
                 "description": "Plot Gabbard diagram (apogee/perigee vs period) for multiple objects",
                 "inputs": "gp_records list",
+            },
+            "plot_trajectory_3d": {
+                "description": "Interactive 3D orbit trajectory about Earth (PNG + saved HTML)",
+                "inputs": "satellite (source dict) + start_epoch + end_epoch",
+            },
+            "plot_synodic_3d": {
+                "description": "Interactive 3D trajectory in a synodic rotating frame (default EMR)",
+                "inputs": "satellite (source dict) + start_epoch + end_epoch + frame",
             },
         },
         "satellite_sources": {
@@ -942,3 +1039,87 @@ def plot_gabbard_diagram(
         TextContent(type="text", text=summary),
         _figure_to_image(fig),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tool 10: plot_trajectory_3d
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def plot_trajectory_3d(
+    satellite: dict,
+    start_epoch: str,
+    end_epoch: str,
+    step_seconds: float = 60.0,
+    label: str | None = None,
+) -> list | dict:
+    """Plot a 3D orbit trajectory about Earth (interactive Plotly; returns PNG + HTML path).
+
+    Args:
+        satellite: {"source": "tle"|"gp_record"|"state", ...} — tle needs tle_line1/tle_line2;
+            gp_record needs gp_record; state needs epoch + state_eci.
+        start_epoch: ISO start epoch.
+        end_epoch: ISO end epoch.
+        step_seconds: Trajectory step size in seconds.
+        label: Optional legend label.
+    """
+    try:
+        start = parse_epoch(start_epoch)
+        end = parse_epoch(end_epoch)
+        if float(end - start) <= 0:
+            raise ValueError("end_epoch must be after start_epoch.")
+        traj = _trajectory_from_satellite(satellite, start, end, step_size=step_seconds)
+    except Exception as e:
+        return {"error": f"3D trajectory plot failed: {e}"}
+    try:
+        fig = brahe.plot_trajectory_3d(
+            [{"trajectory": traj, "label": label or "orbit"}], backend="plotly"
+        )
+        return _plotly_to_outputs(fig, "trajectory_3d")
+    except Exception as e:
+        logger.error("plot_trajectory_3d error: {}", e)
+        return {"error": f"3D trajectory plot failed: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# Tool 11: plot_synodic_3d
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def plot_synodic_3d(
+    satellite: dict,
+    start_epoch: str,
+    end_epoch: str,
+    frame: str = "EMR",
+    step_seconds: float = 60.0,
+    label: str | None = None,
+) -> list | dict:
+    """Plot a 3D trajectory in a synodic (rotating two-body) frame; default Earth-Moon (EMR).
+
+    Args:
+        satellite: {"source": "tle"|"gp_record"|"state", ...} (see plot_trajectory_3d).
+        start_epoch: ISO start epoch.
+        end_epoch: ISO end epoch.
+        frame: Synodic frame name (default "EMR" = Earth-Moon rotating).
+        step_seconds: Trajectory step size in seconds.
+        label: Optional legend label.
+    """
+    try:
+        start = parse_epoch(start_epoch)
+        end = parse_epoch(end_epoch)
+        if float(end - start) <= 0:
+            raise ValueError("end_epoch must be after start_epoch.")
+        traj = _trajectory_from_satellite(satellite, start, end, step_size=step_seconds)
+        ref = brahe.ReferenceFrame.from_string(frame)
+    except Exception as e:
+        return {"error": f"synodic 3D plot failed: {e}"}
+    try:
+        fig = brahe.plot_synodic_3d(
+            [{"trajectory": traj, "label": label or "orbit"}], frame=ref, backend="plotly"
+        )
+        return _plotly_to_outputs(fig, "synodic_3d")
+    except Exception as e:
+        logger.error("plot_synodic_3d error: {}", e)
+        return {"error": f"synodic 3D plot failed: {e}"}

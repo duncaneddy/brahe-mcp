@@ -1,4 +1,5 @@
 import base64
+import os
 
 import pytest
 from mcp.types import ImageContent, TextContent
@@ -467,3 +468,108 @@ class TestPlotGabbardDiagram:
     def test_empty_records_error(self):
         result = plot_gabbard_diagram(gp_records=[])
         assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# 3D trajectory plots
+# ---------------------------------------------------------------------------
+
+TLE_L1_3D = "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9009"
+TLE_L2_3D = "2 25544  51.6400 100.0000 0007000 130.0000 230.0000 15.50000000    06"
+
+
+class TestPlotTrajectory3D:
+    def test_returns_png_and_html_path(self):
+        from brahe_mcp.plotting import plot_trajectory_3d
+        result = plot_trajectory_3d(
+            satellite={"source": "tle", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D},
+            start_epoch="2024-01-01T12:00:00Z",
+            end_epoch="2024-01-01T13:30:00Z",
+        )
+        assert isinstance(result, list)
+        text = [c for c in result if isinstance(c, TextContent)]
+        images = [c for c in result if isinstance(c, ImageContent)]
+        assert images and text
+        html_path = text[0].text.strip().split()[-1]
+        assert html_path.endswith(".html")
+        assert os.path.exists(html_path)
+
+    def test_synodic_emr(self):
+        from brahe_mcp.plotting import plot_synodic_3d
+        result = plot_synodic_3d(
+            satellite={"source": "tle", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D},
+            start_epoch="2024-01-01T12:00:00Z",
+            end_epoch="2024-01-01T14:00:00Z",
+            frame="EMR",
+        )
+        assert any(isinstance(c, ImageContent) for c in result)
+
+    def test_end_before_start_error(self):
+        from brahe_mcp.plotting import plot_trajectory_3d
+        result = plot_trajectory_3d(
+            satellite={"source": "tle", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D},
+            start_epoch="2024-01-01T13:30:00Z",
+            end_epoch="2024-01-01T12:00:00Z",
+        )
+        assert isinstance(result, dict)
+        assert "error" in result
+
+    def test_unique_html_paths_across_calls(self):
+        from brahe_mcp.plotting import plot_trajectory_3d
+        satellite = {"source": "tle", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D}
+        result1 = plot_trajectory_3d(
+            satellite=satellite,
+            start_epoch="2024-01-01T12:00:00Z",
+            end_epoch="2024-01-01T13:30:00Z",
+        )
+        result2 = plot_trajectory_3d(
+            satellite=satellite,
+            start_epoch="2024-01-01T12:00:00Z",
+            end_epoch="2024-01-01T13:30:00Z",
+        )
+        path1 = [c for c in result1 if isinstance(c, TextContent)][0].text.strip().split()[-1]
+        path2 = [c for c in result2 if isinstance(c, TextContent)][0].text.strip().split()[-1]
+        assert path1 != path2
+        assert os.path.exists(path1)
+        assert os.path.exists(path2)
+
+    def test_trajectory_trimmed_to_requested_window(self):
+        # start_epoch is 1 hour AFTER the TLE epoch (2024-01-01 12:00 UTC).
+        # _propagate_trajectory's propagate_to() calls accumulate history
+        # from the TLE epoch onward, so without trimming the trajectory
+        # would silently include an extra unrequested hour of samples.
+        from brahe_mcp.plotting import _trajectory_from_satellite
+        from brahe_mcp.utils import parse_epoch
+
+        satellite = {"source": "tle", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D}
+        start = parse_epoch("2024-01-01T13:00:00Z")
+        end = parse_epoch("2024-01-01T14:00:00Z")
+        traj = _trajectory_from_satellite(satellite, start, end, step_size=60.0)
+        assert abs(float(traj.epoch_at_idx(0) - start)) < 1e-3
+        assert abs(float(traj.epoch_at_idx(traj.length - 1) - end)) < 1e-3
+
+    def test_start_before_satellite_epoch_error(self):
+        # The TLE epoch is 2024-01-01 12:00 UTC; requesting a window that
+        # starts before it has no valid trajectory samples and must error
+        # instead of silently plotting a single out-of-window point.
+        from brahe_mcp.plotting import plot_trajectory_3d
+        result = plot_trajectory_3d(
+            satellite={"source": "tle", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D},
+            start_epoch="2024-01-01T00:00:00Z",
+            end_epoch="2024-01-01T01:30:00Z",
+        )
+        assert isinstance(result, dict)
+        assert "error" in result
+
+    def test_step_seconds_changes_sample_count(self):
+        from brahe_mcp.plotting import _trajectory_from_satellite
+        from brahe_mcp.utils import parse_epoch
+
+        # Start at the TLE epoch itself (2024-01-01 12:00 UTC) so propagate_to
+        # steps forward and records intermediate trajectory samples.
+        satellite = {"source": "TLE", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D}
+        start = parse_epoch("2024-01-01T12:00:00Z")
+        end = parse_epoch("2024-01-01T13:00:00Z")
+        traj_coarse = _trajectory_from_satellite(satellite, start, end, step_size=600.0)
+        traj_fine = _trajectory_from_satellite(satellite, start, end, step_size=60.0)
+        assert traj_fine.length > traj_coarse.length
