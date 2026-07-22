@@ -142,10 +142,11 @@ def _trim_trajectory(traj, start_epoch, end_epoch):
         for e in traj.epochs()
         if float(e - start_epoch) >= -tol and float(e - end_epoch) <= tol
     ]
-    if not kept:
+    if len(kept) < 2:
         raise ValueError(
-            f"No trajectory samples fall within the requested [{start_epoch}, {end_epoch}] "
-            "window; check that the satellite's epoch is at or before start_epoch."
+            f"Fewer than 2 trajectory samples fall within the requested "
+            f"[{start_epoch}, {end_epoch}] window; check that the satellite's epoch is at "
+            "or before start_epoch, or widen the window / reduce step_seconds."
         )
     kept_epochs, kept_states = zip(*kept)
     return brahe.OrbitTrajectory.from_orbital_data(

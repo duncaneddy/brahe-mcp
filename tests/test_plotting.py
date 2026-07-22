@@ -561,6 +561,22 @@ class TestPlotTrajectory3D:
         assert isinstance(result, dict)
         assert "error" in result
 
+    def test_single_sample_window_error(self):
+        # end_epoch exactly at the TLE epoch (12:00 UTC) with start_epoch
+        # before it: the propagator can't step backward past its source
+        # epoch, so the only trajectory sample in range is the source epoch
+        # itself. A single point can't draw a 3D line, so this must error
+        # instead of silently handing a degenerate 1-point trajectory to
+        # the plotly builder.
+        from brahe_mcp.plotting import plot_trajectory_3d
+        result = plot_trajectory_3d(
+            satellite={"source": "tle", "tle_line1": TLE_L1_3D, "tle_line2": TLE_L2_3D},
+            start_epoch="2024-01-01T11:00:00Z",
+            end_epoch="2024-01-01T12:00:00Z",
+        )
+        assert isinstance(result, dict)
+        assert "error" in result
+
     def test_step_seconds_changes_sample_count(self):
         from brahe_mcp.plotting import _trajectory_from_satellite
         from brahe_mcp.utils import parse_epoch
