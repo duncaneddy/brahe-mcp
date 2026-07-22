@@ -235,7 +235,7 @@ def _build_propagator(sat_dict: dict):
             state_eci, epoch = _eci_state_from_gp(gp)
             force_model = sat_dict.get("force_model", "default")
             spacecraft_params = sat_dict.get("spacecraft_params")
-            force_config = _build_force_config(force_model)
+            force_config = _build_force_config(force_model, "earth", None)
             params = (
                 np.array(spacecraft_params, dtype=float)
                 if spacecraft_params is not None
@@ -278,7 +278,7 @@ def _build_propagator(sat_dict: dict):
         elif prop_type == "numerical":
             force_model = sat_dict.get("force_model", "default")
             spacecraft_params = sat_dict.get("spacecraft_params")
-            force_config = _build_force_config(force_model)
+            force_config = _build_force_config(force_model, "earth", None)
             params = (
                 np.array(spacecraft_params, dtype=float)
                 if spacecraft_params is not None

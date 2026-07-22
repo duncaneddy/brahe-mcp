@@ -285,9 +285,10 @@ class TestNumerical:
             target_epoch="2024-01-01 13:00:00 UTC",
             force_model="default",
             spacecraft_params=[1000.0, 10.0, 2.2, 10.0, 1.3],
-            drag_model="harris_priester",
-            gravity_degree=10,
-            gravity_order=10,
+            force_config={
+                "drag": {"model": "harris_priester"},
+                "gravity": {"degree": 10, "order": 10},
+            },
         )
         assert "state" in result
 
@@ -298,7 +299,7 @@ class TestNumerical:
             target_epoch="2024-01-01 13:00:00 UTC",
             force_model="default",
             spacecraft_params=[1000.0, 10.0, 2.2, 10.0, 1.3],
-            drag_model="none",
+            force_config={"drag": {"model": "none"}},
         )
         assert "state" in result
 
@@ -338,9 +339,66 @@ class TestNumerical:
             state_eci=TEST_STATE_ECI,
             target_epoch="2024-01-01 13:00:00 UTC",
             force_model="two_body",
-            drag_model="invalid_model",
+            force_config={"drag": {"model": "invalid_model"}},
         )
         assert "error" in result
+
+
+class TestNumericalConfig:
+    def _leo_state(self):
+        import brahe, numpy as np
+        oe = np.array([brahe.R_EARTH + 500e3, 0.01, 97.8, 15.0, 30.0, 45.0])
+        return brahe.state_koe_to_eci(oe, brahe.AngleFormat.DEGREES).tolist()
+
+    def test_integrator_dict_high_precision(self):
+        from brahe_mcp.propagation import propagate_numerical
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=self._leo_state(),
+            target_epoch="2024-01-01T01:00:00Z",
+            force_model="two_body",
+            integrator={"preset": "high_precision", "method": "rkf78", "abs_tol": 1e-10},
+        )
+        assert res["propagator_type"] == "numerical"
+        assert "error" not in res
+
+    def test_force_config_dict_overrides(self):
+        from brahe_mcp.propagation import propagate_numerical
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=self._leo_state(),
+            target_epoch="2024-01-01T00:30:00Z",
+            force_model="earth_gravity",
+            force_config={"gravity": {"degree": 8, "order": 8}, "relativity": True},
+        )
+        assert "error" not in res
+
+    def test_lunar_central_body_bci_output(self):
+        import brahe, numpy as np
+        from brahe_mcp.propagation import propagate_numerical
+        state = [brahe.R_MOON + 100e3, 0.0, 0.0, 0.0, 1600.0, 0.0]
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=state,
+            target_epoch="2024-01-01T01:00:00Z",
+            force_model="lunar_default",
+            central_body="moon",
+            output_frame="bci",
+            spacecraft_params=[500.0, 0.0, 0.0, 5.0, 1.3],
+        )
+        assert res["output_frame"] == "bci"
+        assert "error" not in res
+
+    def test_bad_integrator_method_errors(self):
+        from brahe_mcp.propagation import propagate_numerical
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=self._leo_state(),
+            target_epoch="2024-01-01T00:10:00Z",
+            force_model="two_body",
+            integrator={"method": "nope"},
+        )
+        assert "error" in res
 
 
 # ---------------------------------------------------------------------------
