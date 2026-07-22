@@ -172,7 +172,7 @@ def list_attitude_options() -> dict:
 @mcp.tool()
 def convert_attitude(
     from_repr: str,
-    value,
+    value: dict | list,
     to_repr: str,
     euler_order_in: str = "ZYX",
     euler_order_out: str = "ZYX",

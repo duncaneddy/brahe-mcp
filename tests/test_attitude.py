@@ -1,3 +1,5 @@
+import asyncio
+
 import numpy as np
 import brahe
 from brahe.attitude import EulerAngle, EulerAngleOrder, EulerAxis
@@ -9,6 +11,18 @@ from brahe_mcp.attitude import (
     list_attitude_options,
     quaternion_slerp,
 )
+
+
+def test_convert_attitude_value_schema_is_not_string():
+    """The registered inputSchema is the contract a calling model validates
+    against. value's every documented encoding is an array or object; a
+    bare-string schema causes schema-validating clients to reject every call.
+    """
+    from brahe_mcp.server import mcp
+
+    tools = {t.name: t for t in asyncio.run(mcp.list_tools())}
+    schema = tools["convert_attitude"].inputSchema["properties"]["value"]
+    assert schema.get("type") != "string", schema
 
 
 def test_euler_angle_properties_are_radians():
