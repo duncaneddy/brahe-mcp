@@ -26,7 +26,7 @@ Recent additions expose more of brahe's 1.7.0 astrodynamics surface as MCP tools
 
 ### Numerical propagation
 
-`propagate_numerical` supports non-Earth central bodies (`central_body`: `earth`, `moon`, `mars`, `emb`, `ssb`, or a NAIF id) with `bci`/`bcbf` output frames, plus two optional structured config dicts that replace the previous per-force keyword arguments:
+`propagate_numerical` supports non-Earth central bodies via the body-specific force model presets (`lunar_default`, `mars_default`, `cislunar_default`), or by setting `force_model="central_body"` with `central_body` set to `moon`, `mars`, or `emb`; the `bci`/`bcbf` output frames report state relative to that body. (`central_body` is only consulted for the `central_body` preset — other presets bake in their own body.) Two optional structured config dicts also replace the previous per-force keyword arguments:
 
 - `force_config`: `{gravity, drag, srp, third_body, tides, relativity, frame_transform}`
 - `integrator`: `{preset, method, abs_tol, rel_tol, initial_step, max_step, store_accelerations}`
