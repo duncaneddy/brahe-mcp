@@ -3,6 +3,7 @@ import brahe
 from loguru import logger
 
 from brahe_mcp.server import mcp
+from brahe_mcp.utils import error_response
 
 VALID_ANGLE_FORMATS = {
     "degrees": brahe.AngleFormat.DEGREES,
@@ -396,4 +397,76 @@ def convert_anomaly(
         "conversion": key,
         "input": {"anomaly": anomaly, "eccentricity": e, "angle_format": fmt_lower},
         "output": {"anomaly": result, "angle_format": fmt_lower},
+    }
+
+
+EQUINOCTIAL_DIRECTIONS = {"koe_to_equinoctial", "equinoctial_to_koe"}
+
+# Keplerian [a, e, i, RAAN, omega, M]; equinoctial [a, h, k, p, q, l]
+# (Vallado 2-99). Only `l` is angular in the equinoctial set.
+_KOE_LABELS = ("a_m", "e", "i", "RAAN", "omega", "M")
+_EQN_LABELS = ("a_m", "h", "k", "p", "q", "l")
+
+
+@mcp.tool()
+def convert_equinoctial(
+    state: list[float],
+    direction: str,
+    fr: int = 1,
+    angle_format: str = "degrees",
+) -> dict:
+    """Convert between Keplerian and equinoctial orbital elements.
+
+    Equinoctial elements are nonsingular for circular and equatorial orbits,
+    where the Keplerian argument of perigee and RAAN become undefined.
+
+    Args:
+        state: 6-element state. Keplerian [a, e, i, RAAN, omega, M] with a in
+            meters, or equinoctial [a, h, k, p, q, l] with a in meters.
+        direction: "koe_to_equinoctial" or "equinoctial_to_koe".
+        fr: Retrograde factor, +1 (default) for direct orbits or -1 for
+            near-retrograde orbits where the standard set is singular at i=180.
+        angle_format: "degrees" (default) or "radians".
+    """
+    key = direction.lower()
+    if key not in EQUINOCTIAL_DIRECTIONS:
+        return error_response(
+            f"Unknown direction: {direction!r}",
+            valid_directions=sorted(EQUINOCTIAL_DIRECTIONS),
+        )
+
+    if fr not in (1, -1):
+        return error_response(f"Invalid fr: {fr!r}. Must be +1 or -1.")
+
+    if len(state) != 6:
+        return error_response(
+            f"state must have exactly 6 elements, got {len(state)}"
+        )
+
+    fmt_lower = angle_format.lower()
+    if fmt_lower not in VALID_ANGLE_FORMATS:
+        return error_response(f"Invalid angle_format: {angle_format!r}")
+    angle_fmt = VALID_ANGLE_FORMATS[fmt_lower]
+
+    vec = np.array(state, dtype=float)
+    try:
+        if key == "koe_to_equinoctial":
+            out = brahe.state_koe_to_equinoctial(vec, angle_fmt, fr)
+            labels = _EQN_LABELS
+        else:
+            out = brahe.state_equinoctial_to_koe(vec, angle_fmt, fr)
+            labels = _KOE_LABELS
+    except Exception as e:
+        logger.error("Equinoctial conversion error: {}", e)
+        return error_response(f"Conversion error: {e}")
+
+    out_list = np.array(out, dtype=float).tolist()
+    logger.debug("Equinoctial {}: {} -> {}", key, state, out_list)
+    return {
+        "direction": key,
+        "input": {"state": state, "fr": fr, "angle_format": fmt_lower},
+        "output": {
+            "state": out_list,
+            "components": dict(zip(labels, out_list)),
+        },
     }

@@ -235,3 +235,60 @@ def test_anomaly_roundtrip():
 
     r3 = convert_anomaly("mean_to_true", anomaly=mean_anom, e=e)
     assert abs(r3["output"]["anomaly"] - true_anom) < 0.01
+
+
+# --- convert_equinoctial ---
+
+import numpy as np
+from brahe_mcp.orbits import convert_equinoctial
+
+KOE = [brahe.R_EARTH + 500e3, 0.01, 45.0, 30.0, 60.0, 90.0]
+
+
+def test_koe_to_equinoctial_matches_brahe():
+    res = convert_equinoctial(KOE, "koe_to_equinoctial")
+    assert "error" not in res
+    expected = brahe.state_koe_to_equinoctial(
+        np.array(KOE), brahe.AngleFormat.DEGREES, 1
+    )
+    assert np.allclose(res["output"]["state"], expected)
+    assert list(res["output"]["components"]) == ["a_m", "h", "k", "p", "q", "l"]
+
+
+def test_equinoctial_roundtrip():
+    fwd = convert_equinoctial(KOE, "koe_to_equinoctial")
+    back = convert_equinoctial(fwd["output"]["state"], "equinoctial_to_koe")
+    assert np.allclose(back["output"]["state"], KOE, rtol=1e-9)
+
+
+def test_equinoctial_retrograde_roundtrip():
+    retro = [brahe.R_EARTH + 500e3, 0.01, 175.0, 30.0, 60.0, 90.0]
+    fwd = convert_equinoctial(retro, "koe_to_equinoctial", fr=-1)
+    back = convert_equinoctial(fwd["output"]["state"], "equinoctial_to_koe", fr=-1)
+    assert np.allclose(back["output"]["state"], retro, rtol=1e-9)
+
+
+def test_equinoctial_invalid_fr():
+    res = convert_equinoctial(KOE, "koe_to_equinoctial", fr=0)
+    assert "error" in res
+    assert "fr" in res["error"]
+
+
+def test_equinoctial_invalid_direction():
+    res = convert_equinoctial(KOE, "sideways")
+    assert "error" in res
+    assert "valid_directions" in res
+
+
+def test_equinoctial_bad_length():
+    res = convert_equinoctial([1.0, 2.0, 3.0], "koe_to_equinoctial")
+    assert "error" in res
+
+
+def test_equinoctial_radians_matches_degrees():
+    koe_rad = [KOE[0], KOE[1]] + [np.radians(v) for v in KOE[2:]]
+    deg = convert_equinoctial(KOE, "koe_to_equinoctial")
+    rad = convert_equinoctial(koe_rad, "koe_to_equinoctial", angle_format="radians")
+    # Only l (index 5) is angular.
+    assert np.allclose(deg["output"]["state"][:5], rad["output"]["state"][:5])
+    assert np.isclose(np.radians(deg["output"]["state"][5]), rad["output"]["state"][5])
