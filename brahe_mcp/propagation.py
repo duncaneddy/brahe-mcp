@@ -6,6 +6,7 @@ from loguru import logger
 
 from brahe_mcp.server import mcp
 from brahe_mcp.utils import error_response, parse_epoch, resolve_angle_format
+from brahe_mcp._gp import _sgp4_from_gp, _eci_state_from_gp  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -319,80 +320,6 @@ def _build_force_config(
         relativity=relativity,
         mass=mass,
     )
-
-
-def _sgp4_from_gp(gp_record: dict, step_size: float = 60.0) -> brahe.SGPPropagator:
-    """Create an SGP propagator from a GP record's OMM elements.
-
-    Uses ``SGPPropagator.from_omm_elements()`` to avoid the precision loss
-    inherent in TLE fixed-width formatting.  The GP record already carries
-    full-precision OMM fields from the CelesTrak / SpaceTrack API.
-
-    Args:
-        gp_record: Dict from serialize_gp_record().
-        step_size: Propagation step size in seconds.
-
-    Returns:
-        SGPPropagator instance.
-
-    Raises:
-        ValueError: If required OMM fields are missing from the GP record.
-    """
-    required = [
-        "epoch", "mean_motion", "eccentricity", "inclination",
-        "ra_of_asc_node", "arg_of_pericenter", "mean_anomaly", "norad_cat_id",
-    ]
-    missing = [k for k in required if gp_record.get(k) is None]
-    if missing:
-        raise ValueError(f"GP record missing required OMM fields: {missing}")
-
-    # from_omm_elements expects bare ISO 8601 (e.g. "2024-01-01T12:00:00")
-    # GP records may have " UTC", "Z", or space separators
-    epoch_str = gp_record["epoch"].strip()
-    for suffix in (" UTC", "Z"):
-        if epoch_str.endswith(suffix):
-            epoch_str = epoch_str[: -len(suffix)]
-    epoch_str = epoch_str.replace(" ", "T", 1)
-
-    return brahe.SGPPropagator.from_omm_elements(
-        epoch=epoch_str,
-        mean_motion=gp_record["mean_motion"],
-        eccentricity=gp_record["eccentricity"],
-        inclination=gp_record["inclination"],
-        raan=gp_record["ra_of_asc_node"],
-        arg_of_pericenter=gp_record["arg_of_pericenter"],
-        mean_anomaly=gp_record["mean_anomaly"],
-        norad_id=gp_record["norad_cat_id"],
-        step_size=step_size,
-        object_name=gp_record.get("object_name"),
-        object_id=gp_record.get("object_id"),
-        classification=gp_record.get("classification_type"),
-        bstar=gp_record.get("bstar"),
-    )
-
-
-def _eci_state_from_gp(gp_record: dict) -> tuple[np.ndarray, brahe.Epoch]:
-    """Convert GP record to an osculating ECI state vector via SGP4.
-
-    GP records contain mean elements fit to the SGP4 theory, so converting
-    them directly with ``state_koe_to_eci()`` produces a theory-inconsistent
-    state.  Instead, we initialize an SGP4 propagator with the OMM elements
-    and evaluate ``state_eci()`` at the TLE epoch to obtain a physically
-    consistent osculating Cartesian state.
-
-    Args:
-        gp_record: Dict from serialize_gp_record().
-
-    Returns:
-        Tuple of (state_eci, epoch).
-
-    Raises:
-        ValueError: If required OMM fields are missing.
-    """
-    prop = _sgp4_from_gp(gp_record)
-    epoch = prop.epoch
-    state_eci = prop.state_eci(epoch)
-    return state_eci, epoch
 
 
 # ---------------------------------------------------------------------------

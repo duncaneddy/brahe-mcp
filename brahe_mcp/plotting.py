@@ -61,7 +61,7 @@ def _propagator_from_gp(gp_record: dict, propagator_type: str = "sgp4"):
     Returns:
         A brahe propagator instance.
     """
-    from brahe_mcp.propagation import _sgp4_from_gp, _eci_state_from_gp
+    from brahe_mcp._gp import _sgp4_from_gp, _eci_state_from_gp
 
     if propagator_type == "sgp4":
         return _sgp4_from_gp(gp_record)
