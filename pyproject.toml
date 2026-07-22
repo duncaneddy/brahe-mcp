@@ -1,6 +1,6 @@
 [project]
 name = "brahe-mcp"
-version = "0.2.3"
+version = "0.3.0"
 description = "MCP server wrapping the Brahe astrodynamics library"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,12 +20,10 @@ classifiers = [
 ]
 
 dependencies = [
-    "brahe>=1.5.0",
+    "brahe[plots]>=1.7.0,<1.8.0",
     "mcp>=1.9.0",
     "pydantic>=2.0",
     "loguru>=0.7",
-    "matplotlib>=3.7",
-    "scienceplots>=2.0",
 ]
 
 [project.urls]
