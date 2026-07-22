@@ -285,6 +285,21 @@ def test_equinoctial_bad_length():
     assert "error" in res
 
 
+def test_equinoctial_non_numeric_input_errors():
+    """Regression test for the non-numeric guard added in ee18703, which
+    shipped without a test and could be silently removed."""
+    res = convert_equinoctial(
+        ["a", "b", "c", "d", "e", "f"], "koe_to_equinoctial"
+    )
+    assert "error" in res
+
+
+def test_equinoctial_invalid_angle_format_lists_valid_options():
+    res = convert_equinoctial(KOE, "koe_to_equinoctial", angle_format="deg")
+    assert "error" in res
+    assert "degrees" in res["error"] and "radians" in res["error"]
+
+
 def test_equinoctial_radians_matches_degrees():
     koe_rad = [KOE[0], KOE[1]] + [np.radians(v) for v in KOE[2:]]
     deg = convert_equinoctial(KOE, "koe_to_equinoctial")
@@ -363,6 +378,12 @@ def test_mean_osc_circular_equatorial_errors_not_nan():
     res = convert_mean_osculating([7000e3, 0.0, 0.0, 0.0, 0.0, 0.0], "mean_to_osc")
     assert "error" in res
     assert "output" not in res
+
+
+def test_mean_osc_invalid_angle_format_lists_valid_options():
+    res = convert_mean_osculating(KOE, "mean_to_osc", angle_format="deg")
+    assert "error" in res
+    assert "degrees" in res["error"] and "radians" in res["error"]
 
 
 # --- convert_mean_osculating_batch ---
@@ -507,6 +528,30 @@ def test_batch_circular_equatorial_errors_not_nan():
     assert "error" in res
     assert "output" not in res
     assert res["non_finite_rows"] == [0]
+
+
+def test_batch_invalid_angle_format_lists_valid_options():
+    epochs, states = _series(1)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", angle_format="deg"
+    )
+    assert "error" in res
+    assert "degrees" in res["error"] and "radians" in res["error"]
+
+
+def test_batch_output_uses_component_names_key():
+    """output.components on the single-state tool is a {label: value} mapping;
+    the batch tool's key must be named differently since its value is a list
+    of labels, not a mapping (see convert_mean_osculating for the mapping
+    shape). Regression guard for the type mismatch under the old shared key.
+    """
+    epochs, states = _series(3)
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" not in res
+    assert "components" not in res["output"]
+    assert res["output"]["component_names"] == list(
+        ("a_m", "e", "i", "RAAN", "omega", "M")
+    )
 
 
 def test_list_orbital_computations_includes_mean_elements():

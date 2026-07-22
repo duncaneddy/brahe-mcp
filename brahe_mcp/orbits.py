@@ -3,7 +3,7 @@ import brahe
 from loguru import logger
 
 from brahe_mcp.server import mcp
-from brahe_mcp.utils import error_response, parse_epoch
+from brahe_mcp.utils import error_response, parse_epoch, resolve_angle_format
 
 VALID_ANGLE_FORMATS = {
     "degrees": brahe.AngleFormat.DEGREES,
@@ -463,9 +463,10 @@ def convert_equinoctial(
         )
 
     fmt_lower = angle_format.lower()
-    if fmt_lower not in VALID_ANGLE_FORMATS:
-        return error_response(f"Invalid angle_format: {angle_format!r}")
-    angle_fmt = VALID_ANGLE_FORMATS[fmt_lower]
+    try:
+        angle_fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
 
     try:
         vec = np.array(state, dtype=float)
@@ -550,9 +551,10 @@ def convert_mean_osculating(
         )
 
     fmt_lower = angle_format.lower()
-    if fmt_lower not in VALID_ANGLE_FORMATS:
-        return error_response(f"Invalid angle_format: {angle_format!r}")
-    angle_fmt = VALID_ANGLE_FORMATS[fmt_lower]
+    try:
+        angle_fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
 
     bl = brahe.MeanElementMethod.BROUWER_LYDDANE
     try:
@@ -680,9 +682,10 @@ def convert_mean_osculating_batch(
             )
 
     fmt_lower = angle_format.lower()
-    if fmt_lower not in VALID_ANGLE_FORMATS:
-        return error_response(f"Invalid angle_format: {angle_format!r}")
-    angle_fmt = VALID_ANGLE_FORMATS[fmt_lower]
+    try:
+        angle_fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
 
     try:
         epoch_objs = [parse_epoch(e) for e in epochs]
@@ -787,6 +790,6 @@ def convert_mean_osculating_batch(
             "n_output": n_out,
             "dropped_by_edge_handling": n_in - n_out,
             "method": method_key,
-            "components": list(_KOE_LABELS),
+            "component_names": list(_KOE_LABELS),
         },
     }

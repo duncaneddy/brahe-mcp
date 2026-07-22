@@ -74,6 +74,13 @@ def test_zero_position_errors_not_nan():
     assert "output" not in res
 
 
+def test_convert_radec_non_numeric_input_errors():
+    """Regression test for the non-numeric guard added in 0093f99, which
+    shipped without a test and could be silently removed."""
+    res = convert_radec(["a", "b", "c"], "ECI", "RADEC")
+    assert "error" in res
+
+
 def test_state_to_azel_unsupported():
     res = convert_radec([1.0] * 6, "RADEC", "AZEL")
     assert "error" in res
@@ -142,6 +149,31 @@ def test_azel_ecef_site_matches_geodetic_site():
         radec, "RADEC", "AZEL", site=ecef, site_type="ecef", epoch=EPOCH
     )
     assert np.allclose(a["output"]["vector"], b["output"]["vector"], rtol=1e-6)
+
+
+def test_radec_to_azel_radians_matches_degrees():
+    # angle_format also governs the units of `site`'s lon/lat, not just the
+    # RA/Dec angles (see convert_radec's docstring). Passing site in
+    # radians alongside angle_format="radians" must agree with the all-
+    # degrees path.
+    radec = [45.0, 20.0, 1.0e9]
+    deg = convert_radec(radec, "RADEC", "AZEL", site=SITE, epoch=EPOCH)
+    assert "error" not in deg
+
+    radec_rad = [np.radians(radec[0]), np.radians(radec[1]), radec[2]]
+    site_rad = [np.radians(SITE[0]), np.radians(SITE[1]), SITE[2]]
+    rad = convert_radec(
+        radec_rad, "RADEC", "AZEL", site=site_rad, epoch=EPOCH,
+        angle_format="radians",
+    )
+    assert "error" not in rad
+    assert np.isclose(
+        np.radians(deg["output"]["vector"][0]), rad["output"]["vector"][0]
+    )
+    assert np.isclose(
+        np.radians(deg["output"]["vector"][1]), rad["output"]["vector"][1]
+    )
+    assert np.isclose(deg["output"]["vector"][2], rad["output"]["vector"][2])
 
 
 def test_azel_invalid_epoch():

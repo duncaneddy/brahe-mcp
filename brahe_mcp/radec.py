@@ -113,7 +113,9 @@ def convert_radec(
         vector: 3 elements for a position, 6 for a state.
         from_frame: Source frame (RADEC, ECI, GCRF, AZEL).
         to_frame: Target frame (same set).
-        angle_format: "degrees" (default) or "radians".
+        angle_format: "degrees" (default) or "radians". Also governs the
+            units of site's longitude/latitude (site_type="ecef" is unaffected,
+            since ECEF coordinates carry no angles).
         site: Ground site [lon, lat, alt] — required for RADEC <-> AZEL only.
         site_type: How site is given: "geodetic" (default), "geocentric", "ecef".
         epoch: ISO epoch string — required for RADEC <-> AZEL only.
