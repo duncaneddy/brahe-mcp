@@ -189,3 +189,112 @@ def test_zero_quaternion_produces_finite_error_not_nan_success():
     """
     res = convert_attitude("quaternion", [0.0, 0.0, 0.0, 0.0], "rotation_matrix")
     assert "error" in res
+
+
+from brahe_mcp.attitude import axis_rotation_matrix, compose_rotations, quaternion_slerp
+
+
+def test_axis_rotation_matrix_matches_brahe():
+    res = axis_rotation_matrix("z", 90.0)
+    assert "error" not in res
+    expected = brahe.attitude.Rz(90.0, brahe.AngleFormat.DEGREES)
+    assert np.allclose(res["output"]["matrix"], np.array(expected))
+
+
+def test_axis_rotation_matrix_all_axes_orthonormal():
+    for ax in ("x", "y", "z"):
+        m = np.array(axis_rotation_matrix(ax, 37.0)["output"]["matrix"])
+        assert np.allclose(m @ m.T, np.eye(3), atol=1e-12), ax
+
+
+def test_axis_rotation_radians():
+    a = np.array(axis_rotation_matrix("x", 90.0)["output"]["matrix"])
+    b = np.array(
+        axis_rotation_matrix("x", np.pi / 2, angle_format="radians")["output"]["matrix"]
+    )
+    assert np.allclose(a, b)
+
+
+def test_axis_rotation_invalid_axis():
+    res = axis_rotation_matrix("w", 90.0)
+    assert "error" in res
+    assert "valid_axes" in res
+
+
+def test_compose_rotations_applies_first_element_first():
+    """Pins the composition order: rotations[0] is applied first."""
+    rots = [
+        {"repr": "rotation_matrix",
+         "value": np.array(brahe.attitude.Rz(90.0, brahe.AngleFormat.DEGREES)).tolist()},
+        {"repr": "rotation_matrix",
+         "value": np.array(brahe.attitude.Rx(90.0, brahe.AngleFormat.DEGREES)).tolist()},
+    ]
+    res = compose_rotations(rots)
+    assert "error" not in res
+    rz = np.array(brahe.attitude.Rz(90.0, brahe.AngleFormat.DEGREES))
+    rx = np.array(brahe.attitude.Rx(90.0, brahe.AngleFormat.DEGREES))
+    assert np.allclose(res["output"]["value"], rx @ rz, atol=1e-12)
+    # Rx and Rz do not commute, so this genuinely discriminates the order.
+    assert not np.allclose(rx @ rz, rz @ rx)
+
+
+def test_compose_rotations_mixed_representations():
+    rots = [
+        {"repr": "quaternion", "value": [1.0, 0.0, 0.0, 0.0]},
+        {"repr": "euler_axis", "value": {"axis": [0.0, 0.0, 1.0], "angle": 90.0}},
+    ]
+    res = compose_rotations(rots, output_repr="euler_axis")
+    assert "error" not in res
+    assert np.isclose(res["output"]["value"]["angle"], 90.0, atol=1e-9)
+
+
+def test_compose_rotations_single_is_identity_passthrough():
+    rots = [{"repr": "euler_axis",
+             "value": {"axis": [0.0, 1.0, 0.0], "angle": 30.0}}]
+    res = compose_rotations(rots, output_repr="euler_axis")
+    assert np.isclose(res["output"]["value"]["angle"], 30.0, atol=1e-9)
+
+
+def test_compose_rotations_empty_errors():
+    res = compose_rotations([])
+    assert "error" in res
+
+
+def test_compose_rotations_bad_entry_errors():
+    res = compose_rotations([{"value": [1.0, 0.0, 0.0, 0.0]}])
+    assert "error" in res
+
+
+def test_slerp_endpoints():
+    q1 = [1.0, 0.0, 0.0, 0.0]
+    q2 = np.array(
+        convert_attitude("euler_axis",
+                         {"axis": [0.0, 0.0, 1.0], "angle": 90.0},
+                         "quaternion")["output"]["value"]
+    ).tolist()
+    at0 = quaternion_slerp(q1, q2, 0.0)
+    at1 = quaternion_slerp(q1, q2, 1.0)
+    assert np.allclose(at0["output"]["value"], q1, atol=1e-12)
+    assert np.allclose(at1["output"]["value"], q2, atol=1e-12)
+
+
+def test_slerp_midpoint_is_half_angle():
+    q1 = [1.0, 0.0, 0.0, 0.0]
+    q2 = np.array(
+        convert_attitude("euler_axis",
+                         {"axis": [0.0, 0.0, 1.0], "angle": 90.0},
+                         "quaternion")["output"]["value"]
+    ).tolist()
+    mid = quaternion_slerp(q1, q2, 0.5, output_repr="euler_axis")
+    assert np.isclose(mid["output"]["value"]["angle"], 45.0, atol=1e-9)
+
+
+def test_slerp_t_out_of_range_errors():
+    res = quaternion_slerp([1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], 1.5)
+    assert "error" in res
+    assert "t" in res["error"]
+
+
+def test_slerp_bad_quaternion_errors():
+    res = quaternion_slerp([1.0, 0.0], [1.0, 0.0, 0.0, 0.0], 0.5)
+    assert "error" in res

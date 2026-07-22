@@ -249,3 +249,211 @@ def convert_attitude(
             "scalar_first": scalar_first,
         },
     }
+
+
+_AXES = {"x": RotationMatrix.Rx, "y": RotationMatrix.Ry, "z": RotationMatrix.Rz}
+
+
+@mcp.tool()
+def axis_rotation_matrix(
+    axis: str,
+    angle: float,
+    angle_format: str = "degrees",
+) -> dict:
+    """Compute a principal-axis rotation matrix (Rx, Ry, or Rz).
+
+    Args:
+        axis: "x", "y", or "z".
+        angle: Rotation angle in the given angle_format.
+        angle_format: "degrees" (default) or "radians".
+    """
+    key = str(axis).lower()
+    if key not in _AXES:
+        return error_response(
+            f"Unknown axis: {axis!r}", valid_axes=sorted(_AXES)
+        )
+
+    try:
+        fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
+
+    try:
+        # RotationMatrix.Rx/Ry/Rz return RotationMatrix objects that support
+        # __mul__. The module-level brahe.attitude.Rx/Ry/Rz return bare numpy
+        # arrays instead, which compose_rotations could not use.
+        rot = _AXES[key](float(angle), fmt)
+    except Exception as e:
+        logger.error("Axis rotation error: {}", e)
+        return error_response(f"Rotation error: {e}")
+
+    return {
+        "input": {
+            "axis": key,
+            "angle": angle,
+            "angle_format": angle_format.lower(),
+        },
+        "output": {
+            "matrix": np.array(rot.to_matrix(), dtype=float).tolist()
+        },
+    }
+
+
+@mcp.tool()
+def compose_rotations(
+    rotations: list[dict],
+    output_repr: str = "rotation_matrix",
+    scalar_first: bool = True,
+    angle_format: str = "degrees",
+) -> dict:
+    """Compose a sequence of rotations into a single rotation.
+
+    Rotations are applied in list order: rotations[0] is applied first, then
+    rotations[1], and so on. The result is R_total = R_n @ ... @ R_1.
+
+    Args:
+        rotations: List of {"repr": ..., "value": ...} entries. "repr" is any
+            representation from list_attitude_options(); "value" uses that
+            representation's encoding. An optional "order" key sets the Euler
+            order for euler_angle entries.
+        output_repr: Representation for the composed result.
+        scalar_first: Quaternion ordering for both input and output.
+        angle_format: "degrees" (default) or "radians".
+    """
+    dst = output_repr.lower()
+    if dst not in REPRESENTATIONS:
+        return error_response(
+            f"Unknown output_repr: {output_repr!r}",
+            valid_representations=sorted(REPRESENTATIONS),
+        )
+
+    if not rotations:
+        return error_response("rotations must contain at least one entry")
+
+    try:
+        fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
+
+    composed = None
+    for i, entry in enumerate(rotations):
+        if not isinstance(entry, dict) or "repr" not in entry or "value" not in entry:
+            return error_response(
+                f"rotations[{i}] must be an object with 'repr' and 'value' keys",
+                valid_representations=sorted(REPRESENTATIONS),
+            )
+        rep = str(entry["repr"]).lower()
+        if rep not in REPRESENTATIONS:
+            return error_response(
+                f"rotations[{i}] has unknown repr: {entry['repr']!r}",
+                valid_representations=sorted(REPRESENTATIONS),
+            )
+        try:
+            obj = _parse_attitude(
+                rep, entry["value"], fmt, entry.get("order", "ZYX"), scalar_first
+            )
+        except (ValueError, KeyError, TypeError) as e:
+            return error_response(f"Invalid rotations[{i}] value: {e}")
+        except Exception as e:
+            logger.error("Compose parse error: {}", e)
+            return error_response(f"Invalid rotations[{i}] value: {e}")
+
+        rot = obj.to_rotation_matrix()
+        # rotations[0] applied first => later entries multiply on the left.
+        composed = rot if composed is None else rot * composed
+
+    try:
+        out = _serialize_attitude(composed, dst, fmt, "ZYX", scalar_first)
+    except Exception as e:
+        logger.error("Compose error: {}", e)
+        return error_response(f"Composition error: {e}")
+
+    if not _all_finite(out):
+        return error_response(
+            "Composition produced non-finite output",
+            output_repr=dst,
+        )
+
+    logger.debug("Composed {} rotations -> {}", len(rotations), dst)
+    return {
+        "input": {
+            "n_rotations": len(rotations),
+            "angle_format": angle_format.lower(),
+        },
+        "output": {
+            "representation": dst,
+            "value": out,
+            "angle_format": angle_format.lower(),
+            "scalar_first": scalar_first,
+            "composition_order": "rotations[0] applied first",
+        },
+    }
+
+
+@mcp.tool()
+def quaternion_slerp(
+    q1: list[float],
+    q2: list[float],
+    t: float,
+    scalar_first: bool = True,
+    output_repr: str = "quaternion",
+    angle_format: str = "degrees",
+) -> dict:
+    """Spherically interpolate between two quaternions.
+
+    Args:
+        q1: Start quaternion, [w, x, y, z] unless scalar_first is False.
+        q2: End quaternion, same ordering.
+        t: Interpolation parameter in [0, 1]. 0 returns q1, 1 returns q2.
+        scalar_first: Quaternion component ordering for input and output.
+        output_repr: Representation for the interpolated result.
+        angle_format: "degrees" (default) or "radians", for non-quaternion output.
+    """
+    dst = output_repr.lower()
+    if dst not in REPRESENTATIONS:
+        return error_response(
+            f"Unknown output_repr: {output_repr!r}",
+            valid_representations=sorted(REPRESENTATIONS),
+        )
+
+    if not 0.0 <= t <= 1.0:
+        return error_response(f"t must be in [0, 1], got {t}")
+
+    try:
+        fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
+
+    try:
+        a = _parse_attitude("quaternion", q1, fmt, "ZYX", scalar_first)
+        b = _parse_attitude("quaternion", q2, fmt, "ZYX", scalar_first)
+    except (ValueError, KeyError, TypeError) as e:
+        return error_response(f"Invalid quaternion: {e}")
+    except Exception as e:
+        logger.error("Slerp parse error: {}", e)
+        return error_response(f"Invalid quaternion: {e}")
+
+    try:
+        result = a.slerp(b, float(t))
+        out = _serialize_attitude(result, dst, fmt, "ZYX", scalar_first)
+    except Exception as e:
+        logger.error("Slerp error: {}", e)
+        return error_response(f"Slerp error: {e}")
+
+    if not _all_finite(out):
+        return error_response(
+            "Slerp produced non-finite output (input quaternion may be "
+            "degenerate, e.g. a zero-norm quaternion)",
+            output_repr=dst,
+        )
+
+    logger.debug("Slerp t={} -> {}", t, dst)
+    return {
+        "input": {"q1": q1, "q2": q2, "t": t, "scalar_first": scalar_first},
+        "output": {
+            "representation": dst,
+            "value": out,
+            "angle_format": angle_format.lower(),
+            "scalar_first": scalar_first,
+        },
+    }
