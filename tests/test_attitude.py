@@ -142,6 +142,44 @@ def test_non_orthogonal_rotation_matrix_returns_error_not_raise():
     assert "error" in res
 
 
+def test_euler_angle_output_is_radians_when_requested():
+    """Covers the radians branch of _angles_from_radians.
+
+    test_radians_angle_format only exercises euler_axis, which uses brahe's
+    format-aware to_vector and never reaches this helper. Without this test,
+    a helper that always converted to degrees would pass the whole suite.
+    """
+    res = convert_attitude(
+        "euler_angle", {"angles": list(np.radians([10.0, 20.0, 30.0])), "order": "ZYX"},
+        "euler_angle", angle_format="radians")
+    assert np.allclose(
+        res["output"]["value"]["angles"], np.radians([10.0, 20.0, 30.0]), atol=1e-9
+    )
+
+
+def test_euler_order_out_produces_correct_non_default_result():
+    """euler_order_out is otherwise only exercised at its default value."""
+    expected = EulerAngle(
+        EulerAngleOrder.ZYX, 10.0, 20.0, 30.0, brahe.AngleFormat.DEGREES
+    ).to_euler_angle(EulerAngleOrder.XYZ)
+    expected_angles = [
+        np.degrees(expected.phi),
+        np.degrees(expected.theta),
+        np.degrees(expected.psi),
+    ]
+
+    res = convert_attitude(
+        "euler_angle", {"angles": [10.0, 20.0, 30.0], "order": "ZYX"},
+        "euler_angle", euler_order_out="xyz",
+    )
+    assert "error" not in res
+    assert res["output"]["value"]["order"] == "XYZ"
+    assert np.allclose(res["output"]["value"]["angles"], expected_angles, atol=1e-9)
+    assert not np.allclose(
+        res["output"]["value"]["angles"], [10.0, 20.0, 30.0], atol=1e-6
+    )
+
+
 def test_zero_quaternion_produces_finite_error_not_nan_success():
     """Quaternion.from_vector silently normalizes [0,0,0,0] without raising,
     and every downstream converter (to_rotation_matrix, to_euler_axis,

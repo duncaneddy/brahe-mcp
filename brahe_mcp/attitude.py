@@ -130,10 +130,10 @@ def _serialize_attitude(
 def _all_finite(value) -> bool:
     """Recursively check that a serialized attitude value has no NaN/Inf.
 
-    Degenerate inputs (e.g. a zero-norm quaternion or zero-length Euler
-    axis) are accepted without error by brahe's constructors but silently
-    propagate NaN through the converters. Bare NaN/Inf is not valid JSON
-    (RFC 8259), so this must be checked before returning a success envelope.
+    Degenerate inputs (e.g. a zero-norm quaternion) are accepted without
+    error by brahe's constructors but silently propagate NaN through the
+    converters. Bare NaN/Inf is not valid JSON (RFC 8259), so this must be
+    checked before returning a success envelope.
     """
     if isinstance(value, dict):
         return all(_all_finite(v) for v in value.values())
@@ -230,7 +230,7 @@ def convert_attitude(
     if not _all_finite(out):
         return error_response(
             "Conversion produced non-finite output (input attitude may be "
-            "degenerate, e.g. a zero-norm quaternion or zero-length axis)",
+            "degenerate, e.g. a zero-norm quaternion)",
             from_repr=src,
             to_repr=dst,
         )
