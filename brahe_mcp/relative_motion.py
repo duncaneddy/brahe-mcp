@@ -141,3 +141,91 @@ def compute_rtn_rotation(chief_state_eci: list[float], direction: str) -> dict:
         "input": {"chief_state_eci": chief_state_eci},
         "output": {"matrix": np.array(mat, dtype=float).tolist()},
     }
+
+
+# Which chief_type each ROE direction requires, and the output labels.
+_ROE_DISPATCH = {
+    "eci_to_roe": ("eci", ROE_LABELS),
+    "roe_to_eci": ("eci", _ECI_LABELS),
+    "oe_to_roe": ("koe", ROE_LABELS),
+    "roe_to_oe": ("koe", _KOE_LABELS),
+}
+
+
+@mcp.tool()
+def convert_roe_state(
+    chief: list[float],
+    vector: list[float],
+    direction: str,
+    chief_type: str = "eci",
+    angle_format: str = "degrees",
+) -> dict:
+    """Convert between absolute states and quasi-nonsingular relative orbital elements.
+
+    ROE is [da, dlambda, dex, dey, dix, diy]. da, dex, and dey are
+    dimensionless; dlambda, dix, and diy are angular.
+
+    Args:
+        chief: Chief 6-element state. ECI [x,y,z,vx,vy,vz] when chief_type is
+            "eci", or Keplerian [a,e,i,RAAN,omega,M] when chief_type is "koe".
+        vector: The deputy state or the ROE vector, per direction.
+        direction: "eci_to_roe", "roe_to_eci", "oe_to_roe", or "roe_to_oe".
+        chief_type: "eci" (default) or "koe". Must match the direction.
+        angle_format: "degrees" (default) or "radians".
+    """
+    key = direction.lower()
+    if key not in ROE_DIRECTIONS:
+        return error_response(
+            f"Unknown direction: {direction!r}",
+            valid_directions=sorted(ROE_DIRECTIONS),
+        )
+
+    required_type, labels = _ROE_DISPATCH[key]
+    given_type = chief_type.lower()
+    if given_type != required_type:
+        return error_response(
+            f"direction {key!r} requires chief_type={required_type!r}, "
+            f"got {chief_type!r}",
+            valid_chief_types=["eci", "koe"],
+        )
+
+    for name, vec in (("chief", chief), ("vector", vector)):
+        msg = _check_six(name, vec)
+        if msg:
+            return error_response(msg)
+
+    try:
+        fmt = resolve_angle_format(angle_format)
+    except ValueError as e:
+        return error_response(str(e))
+
+    try:
+        chief_arr = np.array(chief, dtype=float)
+        vec = np.array(vector, dtype=float)
+        if key == "eci_to_roe":
+            out = brahe.state_eci_to_roe(chief_arr, vec, fmt)
+        elif key == "roe_to_eci":
+            out = brahe.state_roe_to_eci(chief_arr, vec, fmt)
+        elif key == "oe_to_roe":
+            out = brahe.state_oe_to_roe(chief_arr, vec, fmt)
+        else:
+            out = brahe.state_roe_to_oe(chief_arr, vec, fmt)
+    except Exception as e:
+        logger.error("ROE conversion error: {}", e)
+        return error_response(f"Conversion error: {e}")
+
+    out_list = np.array(out, dtype=float).tolist()
+    logger.debug("ROE {}: {} -> {}", key, vector, out_list)
+    return {
+        "direction": key,
+        "input": {
+            "chief": chief,
+            "chief_type": given_type,
+            "vector": vector,
+            "angle_format": angle_format.lower(),
+        },
+        "output": {
+            "state": out_list,
+            "components": dict(zip(labels, out_list)),
+        },
+    }
