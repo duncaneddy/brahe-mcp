@@ -1,6 +1,7 @@
 import socket
 import pytest
 from brahe_mcp.smallbodies import list_smallbody_options, lookup_small_body, get_small_body_ephemeris
+from brahe_mcp.utils import parse_epoch
 
 
 def _online() -> bool:
@@ -34,3 +35,33 @@ def test_ceres_ephemeris():
     assert "error" not in res
     assert res["count"] >= 2
     assert len(res["states"][0]["vector"]) == 6
+
+
+@pytest.mark.skipif(not _online(), reason="requires JPL Horizons network access")
+def test_ceres_ephemeris_includes_exact_stop():
+    stop = "2024-01-02T06:00:00Z"
+    res = get_small_body_ephemeris(
+        designation="Ceres",
+        start="2024-01-01T00:00:00Z",
+        stop=stop,
+        step_seconds=43200,
+    )
+    assert "error" not in res
+    assert res["count"] >= 2
+    last_epoch = parse_epoch(res["states"][-1]["epoch"])
+    assert abs(float(last_epoch - parse_epoch(stop))) < 1e-3
+
+
+@pytest.mark.skipif(not _online(), reason="requires JPL Horizons network access")
+def test_ceres_ephemeris_sun_center():
+    res = get_small_body_ephemeris(
+        designation="Ceres",
+        start="2024-01-01T00:00:00Z",
+        stop="2024-01-02T00:00:00Z",
+        step_seconds=43200,
+        center="sun",
+    )
+    assert "error" not in res
+    assert res["count"] >= 2
+    for state in res["states"]:
+        assert len(state["vector"]) == 6
