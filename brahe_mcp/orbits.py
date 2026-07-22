@@ -448,8 +448,8 @@ def convert_equinoctial(
         return error_response(f"Invalid angle_format: {angle_format!r}")
     angle_fmt = VALID_ANGLE_FORMATS[fmt_lower]
 
-    vec = np.array(state, dtype=float)
     try:
+        vec = np.array(state, dtype=float)
         if key == "koe_to_equinoctial":
             out = brahe.state_koe_to_equinoctial(vec, angle_fmt, fr)
             labels = _EQN_LABELS
