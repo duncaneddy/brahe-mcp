@@ -23,6 +23,10 @@ Recent additions expose more of brahe's 1.7.0 astrodynamics surface as MCP tools
 | SPICE & body ephemerides | `list_ephemeris_options`, `list_spice_kernels`, `load_spice_kernel`, `load_common_spice_kernels`, `unload_spice_kernel`, `get_body_state` | Manage SPICE kernels and query planet/Moon/Sun/barycenter states via SPICE. |
 | Small bodies | `list_smallbody_options`, `lookup_small_body`, `get_small_body_ephemeris` | Look up asteroids/comets via the JPL Small-Body Database (SBDB) and sample ephemerides generated on demand via JPL Horizons. Both make live JPL network calls. |
 | 3D plots | `plot_trajectory_3d`, `plot_synodic_3d` | Interactive 3D trajectory plots about Earth or in a synodic (rotating two-body) frame; each returns an inline PNG plus a saved interactive HTML file. |
+| RA/Dec coordinates | `list_radec_options`, `convert_radec`, `apply_proper_motion` | Right ascension/declination to inertial (ECI/GCRF) and topocentric (AZEL) frames, plus IAU SOFA proper-motion propagation. Proper motion is in mas/yr; `pm_ra` is the cos(dec)-weighted catalog convention. |
+| Orbital elements | `convert_equinoctial`, `convert_mean_osculating`, `convert_mean_osculating_batch` | Equinoctial elements (with retrograde factor `fr`) and mean/osculating conversion via Brouwer-Lyddane or numerical windowed averaging. |
+| Relative motion | `list_relative_motion_options`, `convert_rtn_state`, `convert_roe_state`, `compute_rtn_rotation` | RTN and quasi-nonsingular ROE conversions between a chief and deputy satellite. |
+| Attitude | `list_attitude_options`, `convert_attitude`, `axis_rotation_matrix`, `compose_rotations`, `quaternion_slerp` | Quaternion, Euler axis, Euler angle, and rotation matrix representations, principal-axis rotations, composition, and spherical interpolation. |
 
 ### Numerical propagation
 
@@ -32,6 +36,25 @@ Recent additions expose more of brahe's 1.7.0 astrodynamics surface as MCP tools
 - `integrator`: `{preset, method, abs_tol, rel_tol, initial_step, max_step, store_accelerations}`
 
 Call `list_propagation_options()` to discover the valid keys and values for both dicts.
+
+### Mean and osculating elements
+
+`convert_mean_osculating` handles a single state using the Brouwer-Lyddane
+analytical theory. `convert_mean_osculating_batch` handles a time series and
+additionally supports the numerical windowed-averaging method.
+
+Two things to know about the numerical method:
+
+- It is **batch-only**. The single-state tool rejects it.
+- With `edge="truncate"` (the default), osculating-to-mean returns **fewer
+  states than it receives**, because the averaging window consumes the edges of
+  the series. Read `n_output` and `dropped_by_edge_handling` from the response
+  rather than assuming the length is preserved.
+
+Numerical mean-to-osculating inverts the averaging by differential correction
+and therefore requires a `force_config`; call `list_propagation_options()` for
+the valid keys. Brouwer-Lyddane is a first-order theory, so mean-to-osculating
+followed by osculating-to-mean does not return the input exactly.
 
 ### Plotting output
 
