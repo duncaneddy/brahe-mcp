@@ -117,13 +117,15 @@ def get_small_body_ephemeris(
         logger.error("Horizons SPK error: {}", e)
         return error_response(f"Horizons SPK generation failed: {e}")
 
-    # The small-body SPK only has a direct segment to the Sun (NAIF 10); the
-    # planetary kernels provide the Sun -> SSB (NAIF 0) chain needed for other
-    # centers (e.g. the "ssb" default).
-    try:
-        brahe.load_common_spice_kernels()
-    except Exception as e:
-        logger.warning("Failed to load common SPICE kernels: {}", e)
+    # The small-body SPK only has a direct segment to the Sun (NAIF 10), so a
+    # "sun"-centered query resolves without extra data. Any other center
+    # (e.g. the "ssb" default) needs the planetary kernels for the
+    # Sun -> center chain.
+    if center_naif != 10:
+        try:
+            brahe.load_common_spice_kernels()
+        except Exception as e:
+            logger.warning("Failed to load common SPICE kernels: {}", e)
 
     states = []
     try:
