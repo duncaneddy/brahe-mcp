@@ -1072,7 +1072,7 @@ def plot_trajectory_3d(
             raise ValueError("end_epoch must be after start_epoch.")
         traj = _trajectory_from_satellite(satellite, start, end, step_size=step_seconds)
     except Exception as e:
-        return {"error": f"3D trajectory plot failed: {e}"}
+        return error_response(f"3D trajectory plot failed: {e}")
     try:
         fig = brahe.plot_trajectory_3d(
             [{"trajectory": traj, "label": label or "orbit"}], backend="plotly"
@@ -1080,7 +1080,7 @@ def plot_trajectory_3d(
         return _plotly_to_outputs(fig, "trajectory_3d")
     except Exception as e:
         logger.error("plot_trajectory_3d error: {}", e)
-        return {"error": f"3D trajectory plot failed: {e}"}
+        return error_response(f"3D trajectory plot failed: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1115,7 +1115,7 @@ def plot_synodic_3d(
         traj = _trajectory_from_satellite(satellite, start, end, step_size=step_seconds)
         ref = brahe.ReferenceFrame.from_string(frame)
     except Exception as e:
-        return {"error": f"synodic 3D plot failed: {e}"}
+        return error_response(f"synodic 3D plot failed: {e}")
     try:
         fig = brahe.plot_synodic_3d(
             [{"trajectory": traj, "label": label or "orbit"}], frame=ref, backend="plotly"
@@ -1123,4 +1123,4 @@ def plot_synodic_3d(
         return _plotly_to_outputs(fig, "synodic_3d")
     except Exception as e:
         logger.error("plot_synodic_3d error: {}", e)
-        return {"error": f"synodic 3D plot failed: {e}"}
+        return error_response(f"synodic 3D plot failed: {e}")

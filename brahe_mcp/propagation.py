@@ -16,6 +16,9 @@ VALID_OUTPUT_FRAMES = {
     "eci", "ecef", "gcrf", "itrf", "eme2000", "koe_osc", "koe_mean", "bci", "bcbf",
 }
 
+# Output frames that are only meaningful relative to Earth.
+_EARTH_ONLY_FRAMES = {"eci", "ecef", "gcrf", "itrf", "eme2000"}
+
 FORCE_MODEL_PRESETS = {
     "default": "Default: 20x20 EGM2008 gravity, Harris-Priester drag, SRP with conical eclipse, Sun/Moon third-body. Requires spacecraft_params.",
     "two_body": "Point-mass gravity only. No spacecraft_params needed.",
@@ -355,9 +358,7 @@ def _override_drag(current, d: dict | None):
     model_name = str(d.get("model", "")).lower()
     if model_name in ("none", ""):
         return None
-    if model_name == "exponential":
-        model = brahe.AtmosphericModel.exponential()
-    elif model_name in _ATMOSPHERIC_MODELS:
+    if model_name in _ATMOSPHERIC_MODELS:
         model = _ATMOSPHERIC_MODELS[model_name]
     else:
         raise ValueError(f"Unknown drag model: {d.get('model')!r}")
@@ -410,14 +411,14 @@ def _override_tides(current, t: dict | None):
         return current
     if not (t.get("solid") or t.get("ocean") or t.get("permanent")):
         return None
-    kwargs = {}
-    if t.get("solid"):
-        kwargs["solid"] = brahe.SolidTideConfig()
-    if t.get("ocean"):
-        kwargs["ocean"] = brahe.OceanTideConfig()
-    if t.get("permanent"):
-        kwargs["permanent"] = brahe.PermanentTideConfig()
-    return brahe.TidesConfiguration(**kwargs)
+    solid = brahe.SolidTideConfig() if t.get("solid") else None
+    ocean = brahe.OceanTideConfig() if t.get("ocean") else None
+    permanent = (
+        brahe.PermanentTideConfig.AUTO
+        if t.get("permanent", True)
+        else brahe.PermanentTideConfig.OFF
+    )
+    return brahe.TidesConfiguration(permanent=permanent, solid=solid, ocean=ocean)
 
 
 def _override_frame_transform(current, name: str | None):
@@ -517,7 +518,7 @@ def list_propagation_options() -> dict:
         "force_model_presets": FORCE_MODEL_PRESETS,
         "force_config_keys": {
             "gravity": "{degree, order, model_type: EGM2008_120|GGM05S|JGM3, use_global}",
-            "drag": "{model: harris_priester|nrlmsise00|exponential|none, body}",
+            "drag": "{model: harris_priester|nrlmsise00|none, body}",
             "srp": "{enable, eclipse_model: conical|cylindrical|none, occulting_bodies: [earth,moon,mars]}",
             "third_body": "{bodies: [sun,moon,earth,...|{name,naif_id,gm}], ephemeris_source: low_precision|de440s|de440}",
             "tides": "{solid, ocean, permanent}",
@@ -751,6 +752,19 @@ def propagate_numerical(
     frame = _validate_output_frame(output_frame)
     if frame is None:
         return _prop_error(f"Unknown output_frame: {output_frame!r}", valid_frames=sorted(VALID_OUTPUT_FRAMES))
+
+    try:
+        resolved_body = _resolve_central_body(central_body)
+    except ValueError as e:
+        return _prop_error(str(e))
+
+    if resolved_body != brahe.CentralBody.Earth and frame in _EARTH_ONLY_FRAMES:
+        return _prop_error(
+            f"output_frame {output_frame!r} is Earth-specific and invalid for "
+            f"central_body={central_body!r}. Use bci/bcbf for body-centered frames, "
+            "or koe_osc/koe_mean for elements.",
+            valid_frames=sorted(VALID_OUTPUT_FRAMES - _EARTH_ONLY_FRAMES),
+        )
 
     try:
         angle_fmt = resolve_angle_format(angle_format)

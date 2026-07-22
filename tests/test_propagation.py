@@ -343,6 +343,16 @@ class TestNumerical:
         )
         assert "error" in result
 
+    def test_exponential_drag_model_unsupported(self):
+        result = propagate_numerical(
+            epoch=TEST_EPOCH,
+            state_eci=TEST_STATE_ECI,
+            target_epoch="2024-01-01 13:00:00 UTC",
+            force_model="two_body",
+            force_config={"drag": {"model": "exponential"}},
+        )
+        assert "error" in result
+
 
 class TestNumericalConfig:
     def _leo_state(self):
@@ -387,6 +397,32 @@ class TestNumericalConfig:
             spacecraft_params=[500.0, 0.0, 0.0, 5.0, 1.3],
         )
         assert res["output_frame"] == "bci"
+        assert "error" not in res
+
+    def test_lunar_central_body_rejects_earth_frame(self):
+        import brahe
+        from brahe_mcp.propagation import propagate_numerical
+        state = [brahe.R_MOON + 100e3, 0.0, 0.0, 0.0, 1600.0, 0.0]
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=state,
+            target_epoch="2024-01-01T01:00:00Z",
+            force_model="lunar_default",
+            central_body="moon",
+            output_frame="gcrf",
+            spacecraft_params=[500.0, 0.0, 0.0, 5.0, 1.3],
+        )
+        assert "error" in res
+
+    def test_tides_override_valid(self):
+        from brahe_mcp.propagation import propagate_numerical
+        res = propagate_numerical(
+            epoch="2024-01-01T00:00:00Z",
+            state_eci=self._leo_state(),
+            target_epoch="2024-01-01T00:30:00Z",
+            force_model="earth_gravity",
+            force_config={"tides": {"solid": True, "ocean": True}},
+        )
         assert "error" not in res
 
     def test_bad_integrator_method_errors(self):
