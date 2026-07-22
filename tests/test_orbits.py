@@ -463,6 +463,31 @@ def test_batch_empty_input_errors():
     assert "error" in res
 
 
+def test_batch_non_numeric_state_errors():
+    epochs, states = _series(1)
+    states[0] = ["a", "b", "c", "d", "e", "f"]
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" in res
+
+
+def test_batch_malformed_nested_force_config_errors():
+    epochs, states = _series(5)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", method="numerical",
+        force_config={"srp": {"eclipse_model": "bogus"}},
+    )
+    assert "error" in res
+
+
+def test_batch_negative_max_iterations_errors():
+    epochs, states = _series(5)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", method="numerical",
+        force_config={}, max_iterations=-5,
+    )
+    assert "error" in res
+
+
 def test_list_orbital_computations_includes_mean_elements():
     opts = list_orbital_computations()
     mec = opts["mean_element_conversions"]

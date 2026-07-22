@@ -705,13 +705,14 @@ def convert_mean_osculating_batch(
                 # body argument entirely, so "earth" is inert but explicit.
                 fc = _build_force_config(force_model, "earth", force_config)
                 pc = _build_propagation_config(integrator)
-            except ValueError as e:
-                return error_response(
-                    f"Invalid force_model, force_config, or integrator: {e}"
+                inverse_cfg = brahe.MeanElementInverseConfig(
+                    fc, pc, float(tolerance), int(max_iterations)
                 )
-            inverse_cfg = brahe.MeanElementInverseConfig(
-                fc, pc, float(tolerance), int(max_iterations)
-            )
+            except (ValueError, KeyError, AttributeError, TypeError, OverflowError) as e:
+                return error_response(
+                    f"Invalid force_model, force_config, integrator, tolerance, "
+                    f"or max_iterations: {e}"
+                )
 
         num_cfg = brahe.MeanElementNumericalMethodConfig(
             float(window_seconds),
@@ -721,8 +722,8 @@ def convert_mean_osculating_batch(
         )
         mean_method = brahe.MeanElementMethod.numerical(num_cfg)
 
-    arr = np.array(states, dtype=float)
     try:
+        arr = np.array(states, dtype=float)
         if key == "mean_to_osc":
             out_epochs, out_states = brahe.batch_state_koe_mean_to_osc(
                 epoch_objs, arr, mean_method, angle_fmt
