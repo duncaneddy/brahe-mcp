@@ -215,6 +215,12 @@ def convert_roe_state(
         return error_response(f"Conversion error: {e}")
 
     out_list = np.array(out, dtype=float).tolist()
+    if not np.all(np.isfinite(out_list)):
+        return error_response(
+            "Conversion produced non-finite output (chief orbit may be singular "
+            "for this transform, e.g. near-zero inclination or eccentricity)",
+            direction=key,
+        )
     logger.debug("ROE {}: {} -> {}", key, vector, out_list)
     return {
         "direction": key,

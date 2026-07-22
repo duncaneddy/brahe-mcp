@@ -36,6 +36,11 @@ DEPUTY_ECI_INCLINED = [
     3425.4499458966766,
 ]
 
+# Equatorial (i=0) Keplerian chief/deputy pair, for exercising the same
+# roe_to_oe singularity as CHIEF/CHIEF_ECI_INCLINED above but on the koe path.
+CHIEF_KOE_EQUATORIAL = [6878136.3, 0.001, 0.0, 30.0, 45.0, 10.0]
+DEPUTY_KOE_EQUATORIAL = [6878136.3, 0.001, 0.0, 30.002, 45.0, 10.001]
+
 
 def test_list_options_documents_roe_elements():
     opts = list_relative_motion_options()
@@ -118,6 +123,36 @@ def test_oe_roe_roundtrip():
         CHIEF_KOE, fwd["output"]["state"], "roe_to_oe", chief_type="koe"
     )
     assert np.allclose(back["output"]["state"], DEPUTY_KOE, rtol=1e-6, atol=1e-6)
+
+
+def test_roe_to_eci_equatorial_chief_errors():
+    # RAAN is undefined for an equatorial chief, so state_roe_to_eci returns
+    # NaNs; convert_roe_state must surface that as an error, not a "success"
+    # envelope containing a non-finite state.
+    fwd = convert_roe_state(CHIEF, DEPUTY, "eci_to_roe")
+    assert "error" not in fwd
+    res = convert_roe_state(CHIEF, fwd["output"]["state"], "roe_to_eci")
+    assert "error" in res
+    assert "output" not in res
+
+
+def test_roe_to_oe_equatorial_chief_errors():
+    # Same singularity as above, but on the koe (state_roe_to_oe) path.
+    fwd = convert_roe_state(
+        CHIEF_KOE_EQUATORIAL,
+        DEPUTY_KOE_EQUATORIAL,
+        "oe_to_roe",
+        chief_type="koe",
+    )
+    assert "error" not in fwd
+    res = convert_roe_state(
+        CHIEF_KOE_EQUATORIAL,
+        fwd["output"]["state"],
+        "roe_to_oe",
+        chief_type="koe",
+    )
+    assert "error" in res
+    assert "output" not in res
 
 
 def test_roe_chief_type_mismatch_errors():
