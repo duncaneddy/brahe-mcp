@@ -15,6 +15,7 @@ import brahe_mcp.orbits  # noqa: F401, E402
 import brahe_mcp.coordinates  # noqa: F401, E402
 import brahe_mcp.radec  # noqa: F401, E402
 import brahe_mcp.frames  # noqa: F401, E402
+import brahe_mcp.relative_motion  # noqa: F401, E402
 import brahe_mcp.ephemeris  # noqa: F401, E402
 import brahe_mcp.smallbodies  # noqa: F401, E402
 import brahe_mcp.celestrak  # noqa: F401, E402
