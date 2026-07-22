@@ -93,6 +93,24 @@ def test_rtn_bad_vector_length():
     assert "error" in res
 
 
+RADIAL_CHIEF = [7000e3, 0.0, 0.0, 100.0, 0.0, 0.0]
+
+
+def test_convert_rtn_state_radial_chief_errors_not_nan():
+    # A chief whose velocity is parallel to its position (r x v = 0) makes
+    # the RTN frame singular; this must surface as an error dict, never a
+    # success envelope containing non-finite values.
+    res = convert_rtn_state(RADIAL_CHIEF, DEPUTY, "eci_to_rtn")
+    assert "error" in res
+    assert "output" not in res
+
+
+def test_compute_rtn_rotation_radial_chief_errors_not_nan():
+    res = compute_rtn_rotation(RADIAL_CHIEF, "eci_to_rtn")
+    assert "error" in res
+    assert "output" not in res
+
+
 def test_eci_to_roe_matches_brahe():
     res = convert_roe_state(CHIEF, DEPUTY, "eci_to_roe")
     assert "error" not in res

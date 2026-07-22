@@ -65,6 +65,15 @@ def test_bad_vector_length_errors():
     assert "error" in res
 
 
+def test_zero_position_errors_not_nan():
+    # dec is undefined for a zero-length position vector, so brahe returns
+    # NaN. This must surface as an error dict, never a success envelope
+    # containing non-finite values.
+    res = convert_radec([0.0, 0.0, 0.0], "ECI", "RADEC")
+    assert "error" in res
+    assert "output" not in res
+
+
 def test_state_to_azel_unsupported():
     res = convert_radec([1.0] * 6, "RADEC", "AZEL")
     assert "error" in res

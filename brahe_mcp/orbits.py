@@ -480,6 +480,13 @@ def convert_equinoctial(
         return error_response(f"Conversion error: {e}")
 
     out_list = np.array(out, dtype=float).tolist()
+    if not np.all(np.isfinite(out_list)):
+        return error_response(
+            "Conversion produced non-finite output (state may be singular "
+            "for this transform, e.g. near-zero eccentricity or equatorial "
+            "inclination)",
+            direction=key,
+        )
     logger.debug("Equinoctial {}: {} -> {}", key, state, out_list)
     return {
         "direction": key,
@@ -559,6 +566,13 @@ def convert_mean_osculating(
         return error_response(f"Conversion error: {e}")
 
     out_list = np.array(out, dtype=float).tolist()
+    if not np.all(np.isfinite(out_list)):
+        return error_response(
+            "Conversion produced non-finite output (state may be singular "
+            "for this transform, e.g. near-zero eccentricity or equatorial "
+            "inclination)",
+            direction=key,
+        )
     logger.debug("Mean/osc {}: {} -> {}", key, state, out_list)
     return {
         "direction": key,
@@ -736,9 +750,28 @@ def convert_mean_osculating_batch(
         logger.error("Batch mean/osculating error: {}", e)
         return error_response(f"Conversion error: {e}")
 
-    out_list = np.array(out_states, dtype=float).tolist()
+    out_arr = np.array(out_states, dtype=float)
+    out_list = out_arr.tolist()
     n_in = len(states)
     n_out = len(out_list)
+
+    # One non-finite row invalidates the whole response: partial success
+    # (returning the good rows while silently dropping the bad ones) would
+    # decouple output length from n_output/dropped_by_edge_handling, which
+    # callers rely on to detect edge-truncation. Reject and name the rows
+    # instead, matching the single-state tool's error-not-NaN behavior.
+    non_finite_rows = [
+        i for i in range(n_out) if not np.all(np.isfinite(out_arr[i]))
+    ]
+    if non_finite_rows:
+        return error_response(
+            "Conversion produced non-finite output in one or more rows "
+            "(state may be singular for this transform, e.g. near-zero "
+            "eccentricity or equatorial inclination)",
+            direction=key,
+            non_finite_rows=non_finite_rows,
+        )
+
     logger.debug("Batch mean/osc {} {}: {} -> {}", key, method_key, n_in, n_out)
     return {
         "direction": key,

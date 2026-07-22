@@ -99,6 +99,12 @@ def convert_rtn_state(
         return error_response(f"Conversion error: {e}")
 
     out_list = np.array(out, dtype=float).tolist()
+    if not np.all(np.isfinite(out_list)):
+        return error_response(
+            "Conversion produced non-finite output (chief orbit may be singular "
+            "for this transform, e.g. a purely radial trajectory)",
+            direction=key,
+        )
     logger.debug("RTN {}: {} -> {}", key, vector, out_list)
     return {
         "direction": key,
@@ -136,10 +142,17 @@ def compute_rtn_rotation(chief_state_eci: list[float], direction: str) -> dict:
         logger.error("RTN rotation error: {}", e)
         return error_response(f"Rotation error: {e}")
 
+    matrix = np.array(mat, dtype=float).tolist()
+    if not np.all(np.isfinite(matrix)):
+        return error_response(
+            "Rotation produced non-finite output (chief orbit may be singular "
+            "for this transform, e.g. a purely radial trajectory)",
+            direction=key,
+        )
     return {
         "direction": key,
         "input": {"chief_state_eci": chief_state_eci},
-        "output": {"matrix": np.array(mat, dtype=float).tolist()},
+        "output": {"matrix": matrix},
     }
 
 

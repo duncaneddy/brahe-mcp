@@ -188,6 +188,13 @@ def convert_radec(
         return error_response(f"Conversion error: {e}")
 
     out_list = np.array(out, dtype=float).tolist()
+    if not np.all(np.isfinite(out_list)):
+        return error_response(
+            "Conversion produced non-finite output (input may be singular "
+            "for this transform, e.g. zero range or zero position)",
+            from_frame=src,
+            to_frame=dst,
+        )
     labels = _POSITION_LABELS if n == 3 else _STATE_LABELS
     inputs = {
         "vector": vector,

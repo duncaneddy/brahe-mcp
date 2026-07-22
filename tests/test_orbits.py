@@ -356,6 +356,15 @@ def test_mean_osc_bad_length():
     assert "error" in res
 
 
+def test_mean_osc_circular_equatorial_errors_not_nan():
+    # RAAN and argument of perigee are undefined for a circular equatorial
+    # orbit, so brahe returns NaN for i, RAAN, omega. This must surface as
+    # an error dict, never a success envelope containing non-finite values.
+    res = convert_mean_osculating([7000e3, 0.0, 0.0, 0.0, 0.0, 0.0], "mean_to_osc")
+    assert "error" in res
+    assert "output" not in res
+
+
 # --- convert_mean_osculating_batch ---
 
 from brahe_mcp.orbits import convert_mean_osculating_batch
@@ -486,6 +495,18 @@ def test_batch_negative_max_iterations_errors():
         force_config={}, max_iterations=-5,
     )
     assert "error" in res
+
+
+def test_batch_circular_equatorial_errors_not_nan():
+    # Same singularity as test_mean_osc_circular_equatorial_errors_not_nan,
+    # but through the batch entry point. A single poisoned row must reject
+    # the whole call rather than return a mix of finite and NaN rows.
+    epochs, _ = _series(1)
+    states = [[7000e3, 0.0, 0.0, 0.0, 0.0, 0.0]]
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" in res
+    assert "output" not in res
+    assert res["non_finite_rows"] == [0]
 
 
 def test_list_orbital_computations_includes_mean_elements():
