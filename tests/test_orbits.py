@@ -235,3 +235,328 @@ def test_anomaly_roundtrip():
 
     r3 = convert_anomaly("mean_to_true", anomaly=mean_anom, e=e)
     assert abs(r3["output"]["anomaly"] - true_anom) < 0.01
+
+
+# --- convert_equinoctial ---
+
+import numpy as np
+from brahe_mcp.orbits import convert_equinoctial
+
+KOE = [brahe.R_EARTH + 500e3, 0.01, 45.0, 30.0, 60.0, 90.0]
+
+
+def test_koe_to_equinoctial_matches_brahe():
+    res = convert_equinoctial(KOE, "koe_to_equinoctial")
+    assert "error" not in res
+    expected = brahe.state_koe_to_equinoctial(
+        np.array(KOE), brahe.AngleFormat.DEGREES, 1
+    )
+    assert np.allclose(res["output"]["state"], expected)
+    assert list(res["output"]["components"]) == ["a_m", "h", "k", "p", "q", "l"]
+
+
+def test_equinoctial_roundtrip():
+    fwd = convert_equinoctial(KOE, "koe_to_equinoctial")
+    back = convert_equinoctial(fwd["output"]["state"], "equinoctial_to_koe")
+    assert np.allclose(back["output"]["state"], KOE, rtol=1e-9)
+
+
+def test_equinoctial_retrograde_roundtrip():
+    retro = [brahe.R_EARTH + 500e3, 0.01, 175.0, 30.0, 60.0, 90.0]
+    fwd = convert_equinoctial(retro, "koe_to_equinoctial", fr=-1)
+    back = convert_equinoctial(fwd["output"]["state"], "equinoctial_to_koe", fr=-1)
+    assert np.allclose(back["output"]["state"], retro, rtol=1e-9)
+
+
+def test_equinoctial_invalid_fr():
+    res = convert_equinoctial(KOE, "koe_to_equinoctial", fr=0)
+    assert "error" in res
+    assert "fr" in res["error"]
+
+
+def test_equinoctial_invalid_direction():
+    res = convert_equinoctial(KOE, "sideways")
+    assert "error" in res
+    assert "valid_directions" in res
+
+
+def test_equinoctial_bad_length():
+    res = convert_equinoctial([1.0, 2.0, 3.0], "koe_to_equinoctial")
+    assert "error" in res
+
+
+def test_equinoctial_non_numeric_input_errors():
+    """Regression test for the non-numeric guard added in ee18703, which
+    shipped without a test and could be silently removed."""
+    res = convert_equinoctial(
+        ["a", "b", "c", "d", "e", "f"], "koe_to_equinoctial"
+    )
+    assert "error" in res
+
+
+def test_equinoctial_invalid_angle_format_lists_valid_options():
+    res = convert_equinoctial(KOE, "koe_to_equinoctial", angle_format="deg")
+    assert "error" in res
+    assert "degrees" in res["error"] and "radians" in res["error"]
+
+
+def test_equinoctial_radians_matches_degrees():
+    koe_rad = [KOE[0], KOE[1]] + [np.radians(v) for v in KOE[2:]]
+    deg = convert_equinoctial(KOE, "koe_to_equinoctial")
+    rad = convert_equinoctial(koe_rad, "koe_to_equinoctial", angle_format="radians")
+    # Only l (index 5) is angular.
+    assert np.allclose(deg["output"]["state"][:5], rad["output"]["state"][:5])
+    assert np.isclose(np.radians(deg["output"]["state"][5]), rad["output"]["state"][5])
+
+
+# --- convert_mean_osculating ---
+
+from brahe_mcp.orbits import convert_mean_osculating
+
+
+def test_mean_to_osc_matches_brahe():
+    res = convert_mean_osculating(KOE, "mean_to_osc")
+    assert "error" not in res
+    expected = brahe.state_koe_mean_to_osc(
+        np.array(KOE), brahe.MeanElementMethod.BROUWER_LYDDANE,
+        brahe.AngleFormat.DEGREES,
+    )
+    assert np.allclose(res["output"]["state"], expected)
+    assert res["output"]["method"] == "brouwer_lyddane"
+
+
+def test_osc_to_mean_matches_brahe():
+    res = convert_mean_osculating(KOE, "osc_to_mean")
+    expected = brahe.state_koe_osc_to_mean(
+        np.array(KOE), brahe.MeanElementMethod.BROUWER_LYDDANE,
+        brahe.AngleFormat.DEGREES,
+    )
+    assert np.allclose(res["output"]["state"], expected)
+
+
+def test_mean_osc_is_not_a_noop():
+    res = convert_mean_osculating(KOE, "mean_to_osc")
+    assert not np.allclose(res["output"]["state"], KOE)
+
+
+def test_mean_osc_roundtrip_within_bl_theory_error():
+    # Brouwer-Lyddane is a first-order theory, so mean -> osc -> mean is NOT
+    # exact. Tolerances below are sized from measured worst-case residuals
+    # across three test orbits (see spec section 6). Do not tighten these:
+    # correct code fails a strict np.allclose here.
+    fwd = convert_mean_osculating(KOE, "mean_to_osc")
+    back = convert_mean_osculating(fwd["output"]["state"], "osc_to_mean")
+    got = np.array(back["output"]["state"])
+    ref = np.array(KOE)
+    assert abs(got[0] - ref[0]) < 50.0        # a, meters
+    assert abs(got[1] - ref[1]) < 1e-5        # e
+    d_ang = (got[2:] - ref[2:] + 180.0) % 360.0 - 180.0
+    assert np.all(np.abs(d_ang) < 1.0)        # i, RAAN, omega, M in degrees
+
+
+def test_mean_osc_numerical_rejected_with_pointer_to_batch():
+    res = convert_mean_osculating(KOE, "mean_to_osc", method="numerical")
+    assert "error" in res
+    assert "batch" in res["error"].lower()
+
+
+def test_mean_osc_invalid_direction():
+    res = convert_mean_osculating(KOE, "sideways")
+    assert "error" in res
+    assert "valid_directions" in res
+
+
+def test_mean_osc_bad_length():
+    res = convert_mean_osculating([1.0, 2.0], "mean_to_osc")
+    assert "error" in res
+
+
+def test_mean_osc_circular_equatorial_errors_not_nan():
+    # RAAN and argument of perigee are undefined for a circular equatorial
+    # orbit, so brahe returns NaN for i, RAAN, omega. This must surface as
+    # an error dict, never a success envelope containing non-finite values.
+    res = convert_mean_osculating([7000e3, 0.0, 0.0, 0.0, 0.0, 0.0], "mean_to_osc")
+    assert "error" in res
+    assert "output" not in res
+
+
+def test_mean_osc_invalid_angle_format_lists_valid_options():
+    res = convert_mean_osculating(KOE, "mean_to_osc", angle_format="deg")
+    assert "error" in res
+    assert "degrees" in res["error"] and "radians" in res["error"]
+
+
+# --- convert_mean_osculating_batch ---
+
+from brahe_mcp.orbits import convert_mean_osculating_batch
+
+E0 = "2024-01-01T00:00:00Z"
+
+
+def _series(n=100, step=60.0):
+    e0 = brahe.Epoch(E0)
+    epochs = [str(e0 + step * i) for i in range(n)]
+    states = [list(KOE) for _ in range(n)]
+    return epochs, states
+
+
+def test_batch_brouwer_lyddane_preserves_length():
+    epochs, states = _series(10)
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" not in res
+    assert res["output"]["n_input"] == 10
+    assert res["output"]["n_output"] == 10
+    assert res["output"]["dropped_by_edge_handling"] == 0
+    assert len(res["output"]["states"]) == 10
+
+
+def test_batch_bl_matches_single_state_tool():
+    epochs, states = _series(3)
+    batch = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    single = convert_mean_osculating(KOE, "mean_to_osc")
+    assert np.allclose(batch["output"]["states"][0], single["output"]["state"])
+
+
+def test_batch_numerical_osc_to_mean_shortens_series():
+    epochs, states = _series(100)
+    res = convert_mean_osculating_batch(
+        epochs, states, "osc_to_mean", method="numerical", window_seconds=5400.0
+    )
+    assert "error" not in res
+    assert res["output"]["n_input"] == 100
+    # Windowed averaging with truncation consumes the series edges.
+    assert res["output"]["n_output"] < 100
+    assert res["output"]["dropped_by_edge_handling"] == (
+        100 - res["output"]["n_output"]
+    )
+    assert len(res["output"]["epochs"]) == res["output"]["n_output"]
+
+
+def test_batch_numerical_mean_to_osc_requires_force_config():
+    epochs, states = _series(20)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", method="numerical"
+    )
+    assert "error" in res
+    assert "force_config" in res["error"]
+
+
+def test_batch_numerical_mean_to_osc_succeeds_with_force_config():
+    """Happy path for the heaviest code path. Verified to run in ~0.2s."""
+    epochs, states = _series(20)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc",
+        method="numerical", force_config={}, force_model="earth_gravity",
+    )
+    assert "error" not in res
+    # mean_to_osc preserves length; only osc_to_mean truncates.
+    assert res["output"]["n_output"] == 20
+    assert res["output"]["dropped_by_edge_handling"] == 0
+    assert not np.allclose(res["output"]["states"][0], KOE)
+
+
+def test_batch_length_mismatch_errors():
+    epochs, states = _series(5)
+    res = convert_mean_osculating_batch(epochs[:3], states, "mean_to_osc")
+    assert "error" in res
+    assert "3" in res["error"] and "5" in res["error"]
+
+
+def test_batch_bad_row_length_errors():
+    epochs, states = _series(3)
+    states[1] = [1.0, 2.0]
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" in res
+    assert "1" in res["error"]
+
+
+def test_batch_invalid_alignment_errors():
+    epochs, states = _series(3)
+    res = convert_mean_osculating_batch(
+        epochs, states, "osc_to_mean", method="numerical", alignment="sideways"
+    )
+    assert "error" in res
+    assert "valid_alignments" in res
+
+
+def test_batch_invalid_edge_errors():
+    epochs, states = _series(3)
+    res = convert_mean_osculating_batch(
+        epochs, states, "osc_to_mean", method="numerical", edge="nope"
+    )
+    assert "error" in res
+    assert "valid_edges" in res
+
+
+def test_batch_empty_input_errors():
+    res = convert_mean_osculating_batch([], [], "mean_to_osc")
+    assert "error" in res
+
+
+def test_batch_non_numeric_state_errors():
+    epochs, states = _series(1)
+    states[0] = ["a", "b", "c", "d", "e", "f"]
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" in res
+
+
+def test_batch_malformed_nested_force_config_errors():
+    epochs, states = _series(5)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", method="numerical",
+        force_config={"srp": {"eclipse_model": "bogus"}},
+    )
+    assert "error" in res
+
+
+def test_batch_negative_max_iterations_errors():
+    epochs, states = _series(5)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", method="numerical",
+        force_config={}, max_iterations=-5,
+    )
+    assert "error" in res
+
+
+def test_batch_circular_equatorial_errors_not_nan():
+    # Same singularity as test_mean_osc_circular_equatorial_errors_not_nan,
+    # but through the batch entry point. A single poisoned row must reject
+    # the whole call rather than return a mix of finite and NaN rows.
+    epochs, _ = _series(1)
+    states = [[7000e3, 0.0, 0.0, 0.0, 0.0, 0.0]]
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" in res
+    assert "output" not in res
+    assert res["non_finite_rows"] == [0]
+
+
+def test_batch_invalid_angle_format_lists_valid_options():
+    epochs, states = _series(1)
+    res = convert_mean_osculating_batch(
+        epochs, states, "mean_to_osc", angle_format="deg"
+    )
+    assert "error" in res
+    assert "degrees" in res["error"] and "radians" in res["error"]
+
+
+def test_batch_output_uses_component_names_key():
+    """output.components on the single-state tool is a {label: value} mapping;
+    the batch tool's key must be named differently since its value is a list
+    of labels, not a mapping (see convert_mean_osculating for the mapping
+    shape). Regression guard for the type mismatch under the old shared key.
+    """
+    epochs, states = _series(3)
+    res = convert_mean_osculating_batch(epochs, states, "mean_to_osc")
+    assert "error" not in res
+    assert "components" not in res["output"]
+    assert res["output"]["component_names"] == list(
+        ("a_m", "e", "i", "RAAN", "omega", "M")
+    )
+
+
+def test_list_orbital_computations_includes_mean_elements():
+    opts = list_orbital_computations()
+    mec = opts["mean_element_conversions"]
+    assert "convert_mean_osculating_batch" in mec["tools"]
+    assert "numerical" in mec["methods"]
+    assert mec["equinoctial_components"] == ["a_m", "h", "k", "p", "q", "l"]
