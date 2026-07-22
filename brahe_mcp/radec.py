@@ -165,8 +165,8 @@ def convert_radec(
         except ValueError as e:
             return error_response(f"Invalid epoch: {e}")
 
-    vec = np.array(vector, dtype=float)
     try:
+        vec = np.array(vector, dtype=float)
         if dst == "RADEC" and src in INERTIAL_FRAMES:
             fn = brahe.position_inertial_to_radec if n == 3 else brahe.state_inertial_to_radec
             out = fn(vec, fmt)
